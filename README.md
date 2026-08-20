@@ -108,8 +108,8 @@ share a custom pair view between drivers, so the copies are checked in to keep
 
 ### App Store images
 
-The images in `assets/images/` and `drivers/camera/assets/images/` are placeholders: flat
-gradients, which guideline 1.4.2 rejects outright.
+The app image is a dusk shot of a house entrance with a camera under the eave; the driver
+image is a camera on white. Both were generated, then cut to size with the tool below.
 
 There is no reusable image catalogue. Homey publishes a Sketch template from the guidelines
 page, but opening it shows four empty artboards at the required sizes and no bitmaps at all
