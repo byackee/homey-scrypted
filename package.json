@@ -22,7 +22,7 @@
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/node": "^22.10.0",
     "@types/source-map-support": "^0.5.10",
-    "homey": "^3.9.0",
+    "homey": "^4.4.2",
     "typescript": "^5.7.0"
   }
 }
