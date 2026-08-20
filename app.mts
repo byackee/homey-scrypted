@@ -195,7 +195,7 @@ export default class ScryptedApp extends Homey.App {
   }
 
   private async previewPairing(): Promise<Record<string, unknown>> {
-    const drivers: DriverId[] = ['camera', 'light', 'switch', 'sensor', 'lock', 'climate', 'security'];
+    const drivers: DriverId[] = ['camera'];
     const preview: Record<string, unknown> = {};
 
     for (const driver of drivers) {

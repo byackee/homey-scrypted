@@ -1,8 +1,13 @@
 # Homey ⇄ Scrypted
 
 A Homey app that brings a [Scrypted](https://scrypted.app) server into Homey: cameras with
-live video and snapshots, object detections as Flow triggers, and every other device
-Scrypted exposes — lights, switches, sensors, locks, thermostats, alarm systems.
+live video and snapshots, and object detections as Flow triggers.
+
+**v1 ships cameras and doorbells only.** Drivers for the other families Scrypted exposes —
+lights, switches, sensors, locks, thermostats, alarm systems — were written and are in the
+git history, but no such device was available to test them against, and an untested driver
+does not belong in front of users. The translation layer already covers their interfaces,
+so reinstating one is a routing entry plus a driver directory, not a rewrite.
 
 > Requires **Homey Pro** (or Homey Pro mini) running **v12.7.0 or newer**. Homey Cloud and
 > Homey Bridge cannot reach devices on your local network, so they cannot talk to Scrypted.
@@ -17,11 +22,7 @@ Scrypted exposes — lights, switches, sensors, locks, thermostats, alarm system
 | Doorbell press | **Doorbell is pressed** Flow trigger, with a snapshot token |
 | Motion, contact, flood, tamper, noise, occupancy | The matching Homey alarms |
 | Temperature, humidity, luminance, UV, CO₂, PM2.5, PM10, VOC, NOx, air quality, battery | The matching Homey measurements |
-| Lights | On/off, dim, hue, saturation, colour temperature |
-| Switches, outlets, fans, sirens, valves, irrigation, scenes | On/off, fan speed, button |
-| Locks, garage doors, window coverings | Locked, garage door, window covering state |
-| Thermostats, air purifiers | Target temperature, thermostat mode, target humidity |
-| Security systems | Home alarm state |
+| A camera's own switch, floodlight or siren | On/off, dim |
 
 Because Homey proxies video through its own WebRTC layer since v12.12.0, a LAN-only RTSP
 stream from Scrypted plays in the Homey mobile app, in the web app, and from outside your
@@ -69,10 +70,15 @@ lib/deviceTypeMap.mts         Scrypted device type → driver + Homey device cla
 lib/BaseScryptedDevice.mts    reconciles a Homey device against live Scrypted state
 lib/BaseScryptedDriver.mts    shared pairing and repair
 lib/homeyVideos.mts           typings for Homey's Videos API, absent from the published types
-drivers/{camera,light,switch,sensor,lock,climate,security}/
+lib/streamUrl.mts             rewrites Scrypted's loopback stream URLs
+drivers/camera/
 ```
 
-Supporting a new Scrypted interface is normally one entry in `CAPABILITY_BINDINGS` — no
+`CAPABILITY_BINDINGS` is deliberately kept complete rather than trimmed to what a camera
+uses. Cameras are not only cameras: a floodlight cam exposes `OnOff` and `Brightness`, a
+doorbell exposes `BinarySensor`, battery cameras expose `Battery` and `Charger`. Keeping
+the table whole means those work without special-casing, and it is what makes reinstating
+a device family cheap. Supporting a new Scrypted interface is one entry in it — no
 driver or manifest change. `BaseScryptedDevice` re-runs the reconciliation after every
 reconnect, so a device that gains an interface (a motion mixin being switched on, say)
 picks it up without being re-paired.

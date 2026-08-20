@@ -1,62 +1,35 @@
 import { ScryptedDeviceType } from '@scrypted/types';
 
-/** The drivers this app ships. Each groups a family of Scrypted device types. */
-export type DriverId =
-  | 'camera'
-  | 'light'
-  | 'switch'
-  | 'sensor'
-  | 'lock'
-  | 'climate'
-  | 'security';
+/**
+ * The drivers this app ships.
+ *
+ * v1 ships cameras only. The other device families Scrypted exposes — lights, switches,
+ * sensors, locks, thermostats, alarm systems — were built and are preserved in the git
+ * history, but could not be exercised against real hardware, and an untested driver is not
+ * something to put in front of users. Reinstating one is a routing entry here plus a driver
+ * directory; the translation table in `capabilityMap.mts` already covers their interfaces.
+ */
+export type DriverId = 'camera';
 
 export interface TypeRouting {
   /** Which Homey driver pairs this Scrypted device type. */
   driver: DriverId;
   /**
-   * Homey device class, applied per device with `setClass()`. Drivers group several
+   * Homey device class, applied per device with `setClass()`. A driver groups several
    * Scrypted types, so the class cannot live in the driver manifest.
    */
   homeyClass: string;
 }
 
 /**
- * Maps every Scrypted device type onto a driver and a Homey device class.
+ * Maps a Scrypted device type onto a driver and a Homey device class.
  *
- * Types that carry no useful Homey representation (Internal, API, DeviceProvider…) are
- * deliberately absent: `routeFor` returns undefined and pairing skips them, so the device
- * list a user sees contains only things Homey can actually show.
+ * Types with no entry are not offered for pairing: `routeFor` returns undefined and the
+ * device list skips them, so users only see what Homey can actually show.
  */
 const ROUTING: Partial<Record<ScryptedDeviceType | string, TypeRouting>> = {
   [ScryptedDeviceType.Camera]: { driver: 'camera', homeyClass: 'camera' },
   [ScryptedDeviceType.Doorbell]: { driver: 'camera', homeyClass: 'doorbell' },
-
-  [ScryptedDeviceType.Light]: { driver: 'light', homeyClass: 'light' },
-
-  [ScryptedDeviceType.Switch]: { driver: 'switch', homeyClass: 'socket' },
-  [ScryptedDeviceType.Outlet]: { driver: 'switch', homeyClass: 'socket' },
-  [ScryptedDeviceType.Fan]: { driver: 'switch', homeyClass: 'fan' },
-  [ScryptedDeviceType.Siren]: { driver: 'switch', homeyClass: 'siren' },
-  [ScryptedDeviceType.Valve]: { driver: 'switch', homeyClass: 'watervalve' },
-  [ScryptedDeviceType.Irrigation]: { driver: 'switch', homeyClass: 'sprinkler' },
-  [ScryptedDeviceType.Vacuum]: { driver: 'switch', homeyClass: 'vacuumcleaner' },
-  [ScryptedDeviceType.Scene]: { driver: 'switch', homeyClass: 'button' },
-  [ScryptedDeviceType.Program]: { driver: 'switch', homeyClass: 'button' },
-  [ScryptedDeviceType.Automation]: { driver: 'switch', homeyClass: 'button' },
-
-  [ScryptedDeviceType.Sensor]: { driver: 'sensor', homeyClass: 'sensor' },
-  [ScryptedDeviceType.Person]: { driver: 'sensor', homeyClass: 'sensor' },
-  [ScryptedDeviceType.Event]: { driver: 'sensor', homeyClass: 'sensor' },
-
-  [ScryptedDeviceType.Lock]: { driver: 'lock', homeyClass: 'lock' },
-  [ScryptedDeviceType.Garage]: { driver: 'lock', homeyClass: 'garagedoor' },
-  [ScryptedDeviceType.Entry]: { driver: 'lock', homeyClass: 'garagedoor' },
-  [ScryptedDeviceType.WindowCovering]: { driver: 'lock', homeyClass: 'windowcoverings' },
-
-  [ScryptedDeviceType.Thermostat]: { driver: 'climate', homeyClass: 'thermostat' },
-  [ScryptedDeviceType.AirPurifier]: { driver: 'climate', homeyClass: 'airpurifier' },
-
-  [ScryptedDeviceType.SecuritySystem]: { driver: 'security', homeyClass: 'homealarm' },
 };
 
 export function routeFor(type: string): TypeRouting | undefined {
