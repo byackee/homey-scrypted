@@ -1,0 +1,757 @@
+{
+  "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
+  "id": "com.dataweavelabs.scrypted",
+  "version": "1.0.0",
+  "compatibility": ">=12.7.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "brandColor": "#1F6FEB",
+  "name": {
+    "en": "Scrypted",
+    "fr": "Scrypted",
+    "nl": "Scrypted"
+  },
+  "description": {
+    "en": "Bring your Scrypted cameras, detections and devices into Homey.",
+    "fr": "Intégrez vos caméras, détections et appareils Scrypted à Homey.",
+    "nl": "Breng je Scrypted-camera's, detecties en apparaten naar Homey."
+  },
+  "category": [
+    "security"
+  ],
+  "tags": {
+    "en": [
+      "scrypted",
+      "camera",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "detection",
+      "doorbell"
+    ],
+    "fr": [
+      "scrypted",
+      "caméra",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "détection",
+      "sonnette"
+    ]
+  },
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "DataWeave Labs",
+    "email": "admin@dataweavelabs.com"
+  },
+  "support": "mailto:admin@dataweavelabs.com",
+  "api": {
+    "getStatus": {
+      "method": "GET",
+      "path": "/status"
+    },
+    "setConfig": {
+      "method": "PUT",
+      "path": "/config"
+    }
+  },
+  "esm": true,
+  "flow": {
+    "triggers": [
+      {
+        "id": "object_detected",
+        "title": {
+          "en": "An object is detected",
+          "fr": "Un objet est détecté",
+          "nl": "Een object wordt gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "!{{[[detection_class]]|Any object}} is detected",
+          "fr": "!{{[[detection_class]]|Un objet}} est détecté",
+          "nl": "!{{[[detection_class]]|Een object}} wordt gedetecteerd"
+        },
+        "hint": {
+          "en": "Fires when Scrypted's object detector recognises something on this camera.",
+          "fr": "Se déclenche quand le détecteur d'objets de Scrypted reconnaît quelque chose sur cette caméra.",
+          "nl": "Wordt geactiveerd wanneer de objectdetectie van Scrypted iets herkent op deze camera."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=camera"
+          },
+          {
+            "name": "detection_class",
+            "type": "dropdown",
+            "title": {
+              "en": "Object",
+              "fr": "Objet",
+              "nl": "Object"
+            },
+            "values": [
+              {
+                "id": "any",
+                "title": {
+                  "en": "Any object",
+                  "fr": "N'importe quel objet",
+                  "nl": "Elk object"
+                }
+              },
+              {
+                "id": "person",
+                "title": {
+                  "en": "Person",
+                  "fr": "Personne",
+                  "nl": "Persoon"
+                }
+              },
+              {
+                "id": "vehicle",
+                "title": {
+                  "en": "Vehicle",
+                  "fr": "Véhicule",
+                  "nl": "Voertuig"
+                }
+              },
+              {
+                "id": "animal",
+                "title": {
+                  "en": "Animal",
+                  "fr": "Animal",
+                  "nl": "Dier"
+                }
+              },
+              {
+                "id": "package",
+                "title": {
+                  "en": "Package",
+                  "fr": "Colis",
+                  "nl": "Pakket"
+                }
+              },
+              {
+                "id": "face",
+                "title": {
+                  "en": "Face",
+                  "fr": "Visage",
+                  "nl": "Gezicht"
+                }
+              },
+              {
+                "id": "motion",
+                "title": {
+                  "en": "Motion",
+                  "fr": "Mouvement",
+                  "nl": "Beweging"
+                }
+              }
+            ]
+          }
+        ],
+        "tokens": [
+          {
+            "name": "detection_class",
+            "type": "string",
+            "title": {
+              "en": "Object",
+              "fr": "Objet",
+              "nl": "Object"
+            },
+            "example": {
+              "en": "person"
+            }
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "title": {
+              "en": "Label",
+              "fr": "Étiquette",
+              "nl": "Label"
+            },
+            "example": {
+              "en": "Alice"
+            }
+          },
+          {
+            "name": "score",
+            "type": "number",
+            "title": {
+              "en": "Confidence",
+              "fr": "Confiance",
+              "nl": "Zekerheid"
+            },
+            "example": {
+              "en": "87"
+            }
+          },
+          {
+            "name": "snapshot",
+            "type": "image",
+            "title": {
+              "en": "Snapshot",
+              "fr": "Instantané",
+              "nl": "Momentopname"
+            }
+          }
+        ]
+      },
+      {
+        "id": "doorbell_pressed",
+        "title": {
+          "en": "The doorbell is pressed",
+          "fr": "La sonnette est actionnée",
+          "nl": "Er wordt aangebeld"
+        },
+        "hint": {
+          "en": "Fires when Scrypted reports a doorbell press on this device.",
+          "fr": "Se déclenche quand Scrypted signale un appui sur la sonnette de cet appareil.",
+          "nl": "Wordt geactiveerd wanneer Scrypted een druk op de deurbel meldt."
+        },
+        "tokens": [
+          {
+            "name": "snapshot",
+            "type": "image",
+            "title": {
+              "en": "Snapshot",
+              "fr": "Instantané",
+              "nl": "Momentopname"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=camera"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "take_snapshot",
+        "title": {
+          "en": "Refresh the snapshot",
+          "fr": "Actualiser l'instantané",
+          "nl": "Momentopname vernieuwen"
+        },
+        "hint": {
+          "en": "Pulls a new still image from the camera and updates the snapshot tile.",
+          "fr": "Récupère une nouvelle image de la caméra et met à jour la vignette.",
+          "nl": "Haalt een nieuw stilstaand beeld op en werkt de momentopname bij."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=camera"
+          }
+        ]
+      }
+    ]
+  },
+  "drivers": [
+    {
+      "name": {
+        "en": "Camera",
+        "fr": "Caméra",
+        "nl": "Camera"
+      },
+      "class": "camera",
+      "capabilities": [
+        "alarm_motion"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/camera/assets/images/small.png",
+        "large": "/drivers/camera/assets/images/large.png",
+        "xlarge": "/drivers/camera/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "settings": [
+        {
+          "id": "detection_reset_seconds",
+          "type": "number",
+          "label": {
+            "en": "Detection reset",
+            "fr": "Réinitialisation des détections",
+            "nl": "Detectie herstellen"
+          },
+          "hint": {
+            "en": "Scrypted reports a detection but never reports that it ended. The alarm clears this many seconds after the last detection.",
+            "fr": "Scrypted signale une détection mais jamais sa fin. L'alarme retombe ce nombre de secondes après la dernière détection.",
+            "nl": "Scrypted meldt een detectie maar nooit het einde ervan. Het alarm valt dit aantal seconden na de laatste detectie terug."
+          },
+          "value": 30,
+          "min": 1,
+          "max": 3600,
+          "units": {
+            "en": "s"
+          }
+        },
+        {
+          "id": "detection_min_score",
+          "type": "number",
+          "label": {
+            "en": "Minimum confidence",
+            "fr": "Confiance minimale",
+            "nl": "Minimale zekerheid"
+          },
+          "hint": {
+            "en": "Detections scoring below this value are ignored.",
+            "fr": "Les détections dont le score est inférieur à cette valeur sont ignorées.",
+            "nl": "Detecties met een score onder deze waarde worden genegeerd."
+          },
+          "value": 0.5,
+          "min": 0,
+          "max": 1,
+          "step": 0.05
+        }
+      ],
+      "id": "camera"
+    },
+    {
+      "name": {
+        "en": "Climate",
+        "fr": "Climatisation",
+        "nl": "Klimaat"
+      },
+      "class": "thermostat",
+      "capabilities": [
+        "measure_temperature"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/climate/assets/images/small.png",
+        "large": "/drivers/climate/assets/images/large.png",
+        "xlarge": "/drivers/climate/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "climate"
+    },
+    {
+      "name": {
+        "en": "Light",
+        "fr": "Lumière",
+        "nl": "Lamp"
+      },
+      "class": "light",
+      "capabilities": [
+        "onoff"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/light/assets/images/small.png",
+        "large": "/drivers/light/assets/images/large.png",
+        "xlarge": "/drivers/light/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "light"
+    },
+    {
+      "name": {
+        "en": "Lock & Entry",
+        "fr": "Serrure et accès",
+        "nl": "Slot en toegang"
+      },
+      "class": "lock",
+      "capabilities": [
+        "locked"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/lock/assets/images/small.png",
+        "large": "/drivers/lock/assets/images/large.png",
+        "xlarge": "/drivers/lock/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "lock"
+    },
+    {
+      "name": {
+        "en": "Security system",
+        "fr": "Système d'alarme",
+        "nl": "Alarmsysteem"
+      },
+      "class": "homealarm",
+      "capabilities": [
+        "homealarm_state"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/security/assets/images/small.png",
+        "large": "/drivers/security/assets/images/large.png",
+        "xlarge": "/drivers/security/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "security"
+    },
+    {
+      "name": {
+        "en": "Sensor",
+        "fr": "Capteur",
+        "nl": "Sensor"
+      },
+      "class": "sensor",
+      "capabilities": [
+        "alarm_motion"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/sensor/assets/images/small.png",
+        "large": "/drivers/sensor/assets/images/large.png",
+        "xlarge": "/drivers/sensor/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "sensor"
+    },
+    {
+      "name": {
+        "en": "Switch",
+        "fr": "Interrupteur",
+        "nl": "Schakelaar"
+      },
+      "class": "socket",
+      "capabilities": [
+        "onoff"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/switch/assets/images/small.png",
+        "large": "/drivers/switch/assets/images/large.png",
+        "xlarge": "/drivers/switch/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "configure",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "configure"
+        }
+      ],
+      "id": "switch"
+    }
+  ],
+  "capabilities": {
+    "alarm_animal": {
+      "type": "boolean",
+      "title": {
+        "en": "Animal",
+        "fr": "Animal",
+        "nl": "Dier"
+      },
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "getable": true,
+      "setable": false,
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Animal detected",
+        "fr": "Animal détecté"
+      },
+      "insightsTitleFalse": {
+        "en": "Animal cleared",
+        "fr": "Animal terminé"
+      },
+      "icon": "/assets/capability/alarm_animal.svg"
+    },
+    "alarm_face": {
+      "type": "boolean",
+      "title": {
+        "en": "Face",
+        "fr": "Visage",
+        "nl": "Gezicht"
+      },
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "getable": true,
+      "setable": false,
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Face detected",
+        "fr": "Visage détecté"
+      },
+      "insightsTitleFalse": {
+        "en": "Face cleared",
+        "fr": "Visage terminé"
+      },
+      "icon": "/assets/capability/alarm_face.svg"
+    },
+    "alarm_package": {
+      "type": "boolean",
+      "title": {
+        "en": "Package",
+        "fr": "Colis",
+        "nl": "Pakket"
+      },
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "getable": true,
+      "setable": false,
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Package detected",
+        "fr": "Colis détecté"
+      },
+      "insightsTitleFalse": {
+        "en": "Package cleared",
+        "fr": "Colis terminé"
+      },
+      "icon": "/assets/capability/alarm_package.svg"
+    },
+    "alarm_person": {
+      "type": "boolean",
+      "title": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
+      },
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "getable": true,
+      "setable": false,
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Person detected",
+        "fr": "Personne détecté"
+      },
+      "insightsTitleFalse": {
+        "en": "Person cleared",
+        "fr": "Personne terminé"
+      },
+      "icon": "/assets/capability/alarm_person.svg"
+    },
+    "alarm_vehicle": {
+      "type": "boolean",
+      "title": {
+        "en": "Vehicle",
+        "fr": "Véhicule",
+        "nl": "Voertuig"
+      },
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "getable": true,
+      "setable": false,
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Vehicle detected",
+        "fr": "Véhicule détecté"
+      },
+      "insightsTitleFalse": {
+        "en": "Vehicle cleared",
+        "fr": "Véhicule terminé"
+      },
+      "icon": "/assets/capability/alarm_vehicle.svg"
+    },
+    "scrypted_detection": {
+      "type": "string",
+      "title": {
+        "en": "Last detection",
+        "fr": "Dernière détection",
+        "nl": "Laatste detectie"
+      },
+      "uiComponent": "sensor",
+      "getable": true,
+      "setable": false,
+      "insights": false,
+      "icon": "/assets/capability/scrypted_detection.svg"
+    }
+  }
+}

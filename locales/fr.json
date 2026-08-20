@@ -1,0 +1,28 @@
+{
+  "pair": {
+    "server": {
+      "title": "Serveur Scrypted",
+      "host": "Hôte ou adresse IP",
+      "port": "Port",
+      "username": "Nom d'utilisateur",
+      "password": "Mot de passe ou jeton de connexion",
+      "connect": "Se connecter",
+      "hint": "Saisissez l'adresse de votre serveur Scrypted, par exemple 192.168.1.50 et le port 10443."
+    }
+  },
+  "errors": {
+    "not_connected": "Non connecté à Scrypted.",
+    "device_missing": "Cet appareil n'existe plus sur le serveur Scrypted.",
+    "no_video": "Cet appareil Scrypted n'expose pas de flux vidéo.",
+    "no_snapshot": "Cet appareil Scrypted n'expose pas d'instantané."
+  },
+  "settings": {
+    "title": "Scrypted",
+    "subtitle": "Connectez Homey à votre serveur Scrypted.",
+    "server": "Serveur",
+    "save": "Enregistrer",
+    "connected": "Connecté à Scrypted {{version}}",
+    "disconnected": "Non connecté",
+    "saved": "Enregistré et reconnecté."
+  }
+}

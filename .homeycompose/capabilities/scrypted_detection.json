@@ -1,0 +1,9 @@
+{
+  "type": "string",
+  "title": { "en": "Last detection", "fr": "Dernière détection", "nl": "Laatste detectie" },
+  "uiComponent": "sensor",
+  "getable": true,
+  "setable": false,
+  "insights": false,
+  "icon": "/assets/capability/scrypted_detection.svg"
+}

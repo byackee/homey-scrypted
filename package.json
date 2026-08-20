@@ -1,0 +1,28 @@
+{
+  "name": "com.dataweavelabs.scrypted",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "app.mjs",
+  "scripts": {
+    "build": "tsc",
+    "pair-views": "node tools/build-pair-views.mjs",
+    "app:build": "npm run pair-views && homey app build",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \".testbuild/test/*.test.mjs\"",
+    "validate": "homey app validate --level debug",
+    "validate:publish": "homey app validate --level publish"
+  },
+  "dependencies": {
+    "@scrypted/client": "^1.3.26",
+    "@scrypted/types": "^0.5.55",
+    "source-map-support": "^0.5.21"
+  },
+  "devDependencies": {
+    "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
+    "@types/node": "^22.10.0",
+    "@types/source-map-support": "^0.5.10",
+    "homey": "^3.9.0",
+    "typescript": "^5.7.0"
+  }
+}

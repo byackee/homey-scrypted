@@ -1,0 +1,12 @@
+{
+  "type": "boolean",
+  "title": { "en": "Person", "fr": "Personne", "nl": "Persoon" },
+  "uiComponent": "sensor",
+  "uiQuickAction": false,
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": { "en": "Person detected", "fr": "Personne détecté" },
+  "insightsTitleFalse": { "en": "Person cleared", "fr": "Personne terminé" },
+  "icon": "/assets/capability/alarm_person.svg"
+}

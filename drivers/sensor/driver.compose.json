@@ -1,0 +1,20 @@
+{
+  "name": { "en": "Sensor", "fr": "Capteur", "nl": "Sensor" },
+  "class": "sensor",
+  "capabilities": ["alarm_motion"],
+  "platforms": ["local"],
+  "connectivity": ["lan"],
+  "images": {
+    "small": "/drivers/sensor/assets/images/small.png",
+    "large": "/drivers/sensor/assets/images/large.png",
+    "xlarge": "/drivers/sensor/assets/images/xlarge.png"
+  },
+  "pair": [
+    { "id": "configure", "navigation": { "next": "list_devices" } },
+    { "id": "list_devices", "template": "list_devices", "navigation": { "next": "add_devices" } },
+    { "id": "add_devices", "template": "add_devices" }
+  ],
+  "repair": [
+    { "id": "configure" }
+  ]
+}

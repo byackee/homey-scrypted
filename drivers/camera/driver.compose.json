@@ -1,0 +1,86 @@
+{
+  "name": {
+    "en": "Camera",
+    "fr": "Caméra",
+    "nl": "Camera"
+  },
+  "class": "camera",
+  "capabilities": [
+    "alarm_motion"
+  ],
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
+  "images": {
+    "small": "/drivers/camera/assets/images/small.png",
+    "large": "/drivers/camera/assets/images/large.png",
+    "xlarge": "/drivers/camera/assets/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "configure",
+      "navigation": {
+        "next": "list_devices"
+      }
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ],
+  "repair": [
+    {
+      "id": "configure"
+    }
+  ],
+  "settings": [
+    {
+      "id": "detection_reset_seconds",
+      "type": "number",
+      "label": {
+        "en": "Detection reset",
+        "fr": "Réinitialisation des détections",
+        "nl": "Detectie herstellen"
+      },
+      "hint": {
+        "en": "Scrypted reports a detection but never reports that it ended. The alarm clears this many seconds after the last detection.",
+        "fr": "Scrypted signale une détection mais jamais sa fin. L'alarme retombe ce nombre de secondes après la dernière détection.",
+        "nl": "Scrypted meldt een detectie maar nooit het einde ervan. Het alarm valt dit aantal seconden na de laatste detectie terug."
+      },
+      "value": 30,
+      "min": 1,
+      "max": 3600,
+      "units": {
+        "en": "s"
+      }
+    },
+    {
+      "id": "detection_min_score",
+      "type": "number",
+      "label": {
+        "en": "Minimum confidence",
+        "fr": "Confiance minimale",
+        "nl": "Minimale zekerheid"
+      },
+      "hint": {
+        "en": "Detections scoring below this value are ignored.",
+        "fr": "Les détections dont le score est inférieur à cette valeur sont ignorées.",
+        "nl": "Detecties met een score onder deze waarde worden genegeerd."
+      },
+      "value": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    }
+  ]
+}

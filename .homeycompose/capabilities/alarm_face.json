@@ -1,0 +1,12 @@
+{
+  "type": "boolean",
+  "title": { "en": "Face", "fr": "Visage", "nl": "Gezicht" },
+  "uiComponent": "sensor",
+  "uiQuickAction": false,
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": { "en": "Face detected", "fr": "Visage détecté" },
+  "insightsTitleFalse": { "en": "Face cleared", "fr": "Visage terminé" },
+  "icon": "/assets/capability/alarm_face.svg"
+}

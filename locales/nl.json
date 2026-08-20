@@ -1,0 +1,28 @@
+{
+  "pair": {
+    "server": {
+      "title": "Scrypted-server",
+      "host": "Host of IP-adres",
+      "port": "Poort",
+      "username": "Gebruikersnaam",
+      "password": "Wachtwoord of aanmeldtoken",
+      "connect": "Verbinden",
+      "hint": "Voer het adres van je Scrypted-server in, bijvoorbeeld 192.168.1.50 en poort 10443."
+    }
+  },
+  "errors": {
+    "not_connected": "Niet verbonden met Scrypted.",
+    "device_missing": "Dit apparaat bestaat niet meer op de Scrypted-server.",
+    "no_video": "Dit Scrypted-apparaat biedt geen videostream.",
+    "no_snapshot": "Dit Scrypted-apparaat biedt geen momentopname."
+  },
+  "settings": {
+    "title": "Scrypted",
+    "subtitle": "Verbind Homey met je Scrypted-server.",
+    "server": "Server",
+    "save": "Opslaan",
+    "connected": "Verbonden met Scrypted {{version}}",
+    "disconnected": "Niet verbonden",
+    "saved": "Opgeslagen en opnieuw verbonden."
+  }
+}

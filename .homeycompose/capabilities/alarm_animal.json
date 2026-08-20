@@ -1,0 +1,12 @@
+{
+  "type": "boolean",
+  "title": { "en": "Animal", "fr": "Animal", "nl": "Dier" },
+  "uiComponent": "sensor",
+  "uiQuickAction": false,
+  "getable": true,
+  "setable": false,
+  "insights": true,
+  "insightsTitleTrue": { "en": "Animal detected", "fr": "Animal détecté" },
+  "insightsTitleFalse": { "en": "Animal cleared", "fr": "Animal terminé" },
+  "icon": "/assets/capability/alarm_animal.svg"
+}

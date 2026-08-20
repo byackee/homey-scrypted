@@ -1,0 +1,20 @@
+{
+  "name": { "en": "Climate", "fr": "Climatisation", "nl": "Klimaat" },
+  "class": "thermostat",
+  "capabilities": ["measure_temperature"],
+  "platforms": ["local"],
+  "connectivity": ["lan"],
+  "images": {
+    "small": "/drivers/climate/assets/images/small.png",
+    "large": "/drivers/climate/assets/images/large.png",
+    "xlarge": "/drivers/climate/assets/images/xlarge.png"
+  },
+  "pair": [
+    { "id": "configure", "navigation": { "next": "list_devices" } },
+    { "id": "list_devices", "template": "list_devices", "navigation": { "next": "add_devices" } },
+    { "id": "add_devices", "template": "add_devices" }
+  ],
+  "repair": [
+    { "id": "configure" }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "id": "com.dataweavelabs.scrypted",
+  "version": "1.0.0",
+  "compatibility": ">=12.7.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "brandColor": "#1F6FEB",
+  "name": {
+    "en": "Scrypted",
+    "fr": "Scrypted",
+    "nl": "Scrypted"
+  },
+  "description": {
+    "en": "Bring your Scrypted cameras, detections and devices into Homey.",
+    "fr": "Intégrez vos caméras, détections et appareils Scrypted à Homey.",
+    "nl": "Breng je Scrypted-camera's, detecties en apparaten naar Homey."
+  },
+  "category": [
+    "security"
+  ],
+  "tags": {
+    "en": [
+      "scrypted",
+      "camera",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "detection",
+      "doorbell"
+    ],
+    "fr": [
+      "scrypted",
+      "caméra",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "détection",
+      "sonnette"
+    ]
+  },
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "DataWeave Labs",
+    "email": "admin@dataweavelabs.com"
+  },
+  "support": "mailto:admin@dataweavelabs.com",
+  "api": {
+    "getStatus": {
+      "method": "GET",
+      "path": "/status"
+    },
+    "setConfig": {
+      "method": "PUT",
+      "path": "/config"
+    }
+  }
+}
