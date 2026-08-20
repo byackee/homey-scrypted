@@ -22,6 +22,25 @@ export default class ScryptedApp extends Homey.App {
     error: (...args) => this.error(...args as string[]),
   });
 
+  /**
+   * Recent events from the drivers, newest last.
+   *
+   * A CLI-installed Homey app has no readable log, so this is the only way to observe
+   * what pairing actually did. Capped so it cannot grow without bound.
+   */
+  private readonly traces: string[] = [];
+
+  /** Records one line for the diagnostics endpoint. Never throws. */
+  trace(message: string): void {
+    try {
+      this.traces.push(`${new Date().toISOString()} ${message}`);
+      if (this.traces.length > 200) this.traces.splice(0, this.traces.length - 200);
+      this.log(message);
+    } catch {
+      // Tracing must never break the flow it is observing.
+    }
+  }
+
   override async onInit(): Promise<void> {
     const config = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;
 
@@ -91,6 +110,7 @@ export default class ScryptedApp extends Homey.App {
       // Exercises the exact call pairing makes, per driver, so an empty pairing list can
       // be attributed to either this data path or the pairing plumbing above it.
       pairPreview: await this.previewPairing(),
+      traces: this.traces,
     };
   }
 

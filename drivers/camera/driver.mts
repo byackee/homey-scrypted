@@ -10,6 +10,7 @@ export default class CameraDriver extends BaseScryptedDriver {
   }
 
   override async onInit(): Promise<void> {
+    await super.onInit();
     // The trigger fires once per detected object; this listener decides whether the Flow
     // the user built cares about that particular class. 'any' matches every detection.
     this.homey.flow
@@ -24,5 +25,7 @@ export default class CameraDriver extends BaseScryptedDriver {
       .registerRunListener(async (args: { device: ScryptedCameraDevice }) => {
         await args.device.refreshSnapshot();
       });
+
+    this.trace('flow cards registered');
   }
 }

@@ -6,6 +6,7 @@ import type { ScryptedConfig } from './types.mjs';
 interface ScryptedAppLike {
   hub: ScryptedHub;
   saveConfig(config: ScryptedConfig): Promise<void>;
+  trace(message: string): void;
 }
 
 /** What the pairing view sends back when the user submits the server form. */
@@ -36,13 +37,35 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
     return this.homey.app as unknown as ScryptedAppLike;
   }
 
+  /** Records a line into the app's trace buffer, which /diagnostics exposes. */
+  protected trace(message: string): void {
+    try {
+      this.appApi?.trace(`[${this.driverId}] ${message}`);
+    } catch {
+      // The app may not be reachable yet during early driver init.
+    }
+  }
+
+  override async onInit(): Promise<void> {
+    this.trace('driver onInit');
+  }
+
   override async onPair(session: Homey.Driver.PairSession): Promise<void> {
+    this.trace(`onPair start (connected=${this.hub.isConnected})`);
+
+    // Navigation is driven by the pairing view, not from here. Calling
+    // `session.showView()` inside the `showView` handler deadlocks: Homey waits for the
+    // handler to return before completing the transition, while the handler waits for the
+    // transition. The session then hangs silently with no error and no timeout.
     session.setHandler('showView', async (view: string) => {
-      // Jump straight to the device list when the app is already talking to a server.
-      if (view === 'configure' && this.hub.isConnected) {
-        await session.showView('list_devices');
-      }
+      this.trace(`showView ${view}`);
     });
+
+    // The view asks this first, and skips straight to the device list when a server is
+    // already configured so pairing a second device does not ask for the password again.
+    session.setHandler('isConnected', async () => this.hub.isConnected);
+
+    session.setHandler('getConfig', async () => this.publicConfig());
 
     session.setHandler('configure', async (data: ConfigureRequest) => {
       const config = this.normaliseConfig(data);
@@ -51,7 +74,17 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
       return result;
     });
 
-    session.setHandler('list_devices', async () => this.listPairableDevices());
+    session.setHandler('list_devices', async () => {
+      this.trace('list_devices handler called');
+      try {
+        const devices = await this.listPairableDevices();
+        this.trace(`list_devices returning ${devices.length}: ${JSON.stringify(devices)}`);
+        return devices;
+      } catch (err) {
+        this.trace(`list_devices FAILED: ${(err as Error).stack ?? (err as Error).message}`);
+        throw err;
+      }
+    });
   }
 
   override async onRepair(session: Homey.Driver.PairSession): Promise<void> {
@@ -62,11 +95,14 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
       return result;
     });
 
-    session.setHandler('getConfig', async () => {
-      const config = this.hub.getConfig();
-      // The password is never sent back to the view; the field starts empty on repair.
-      return config ? { host: config.host, port: config.port, username: config.username } : null;
-    });
+    // Repair always shows the form, so it deliberately does not answer `isConnected`.
+    session.setHandler('getConfig', async () => this.publicConfig());
+  }
+
+  /** The stored server settings without the password, which is never sent to a view. */
+  private publicConfig(): { host: string; port: number; username: string } | null {
+    const config = this.hub.getConfig();
+    return config ? { host: config.host, port: config.port, username: config.username } : null;
   }
 
   private normaliseConfig(data: ConfigureRequest): ScryptedConfig {

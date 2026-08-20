@@ -53,15 +53,30 @@
   const errorEl = $('error');
   const button = $('connect');
 
-  // Repair sessions pre-fill the known settings; pairing sessions get an empty form.
-  Homey.emit('getConfig', null)
-    .then(config => {
-      if (!config) return;
-      $('host').value = config.host || '';
-      $('port').value = config.port || 10443;
-      $('username').value = config.username || '';
+  /*
+   * Navigation is decided here rather than in the driver's showView handler: calling
+   * session.showView() from inside that handler deadlocks the pairing session.
+   *
+   * When a server is already configured, skip straight to the device list. Repair does not
+   * answer isConnected, so it always falls through to the form.
+   */
+  Homey.emit('isConnected', null)
+    .then(connected => {
+      if (connected) return Homey.showView('list_devices');
+      return prefill();
     })
-    .catch(() => { /* Pairing has no getConfig handler; an empty form is correct there. */ });
+    .catch(prefill);
+
+  function prefill() {
+    return Homey.emit('getConfig', null)
+      .then(config => {
+        if (!config) return;
+        $('host').value = config.host || '';
+        $('port').value = config.port || 10443;
+        $('username').value = config.username || '';
+      })
+      .catch(() => { /* No stored config yet; an empty form is correct. */ });
+  }
 
   function submit() {
     errorEl.textContent = '';
