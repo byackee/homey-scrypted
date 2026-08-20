@@ -8,9 +8,13 @@
  *
  * Uses `sips`, which ships with macOS. On Linux, swap the two calls for ImageMagick.
  *
+ * The two targets take different pictures, and guideline 1.4.3 calls out using one for the
+ * other. The app image is a lifestyle photo; the driver image is the device itself on a
+ * white background.
+ *
  * Usage:
- *   node tools/build-images.mjs app    <source-image>
- *   node tools/build-images.mjs camera <source-image>
+ *   node tools/build-images.mjs app    <lifestyle-photo>
+ *   node tools/build-images.mjs camera <camera-on-white-background>
  */
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';

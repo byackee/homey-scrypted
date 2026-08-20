@@ -109,19 +109,28 @@ share a custom pair view between drivers, so the copies are checked in to keep
 ### App Store images
 
 The images in `assets/images/` and `drivers/camera/assets/images/` are placeholders: flat
-gradients, which guideline 1.4.2 rejects outright. Neither Homey nor anyone else ships
-reusable defaults — the CLI template contains only a generic `icon.svg`. Real artwork is
-required before submitting for certification. Athom prefers brand imagery, but Scrypted's
-repository has no blanket licence and no code licence grants logo rights, so using its
-artwork means asking its author. A commercially licensed photo (Unsplash, Pexels) avoids
-that entirely.
+gradients, which guideline 1.4.2 rejects outright.
 
-Once a source picture is chosen, this produces every required size, centre-cropping to the
+There is no reusable image catalogue. Homey publishes a Sketch template from the guidelines
+page, but opening it shows four empty artboards at the required sizes and no bitmaps at all
+— it scaffolds dimensions, nothing more. Scrypted's repository has no blanket licence, and
+no code licence grants logo rights in any case, so using its artwork means asking its
+author. A commercially licensed photo (Unsplash, Pexels) avoids that.
+
+**The app image and the driver image are not the same picture**, and using one for the other
+is called out explicitly in the guidelines:
+
+| | Wanted | Rejected |
+| --- | --- | --- |
+| App image, 10:7 | A lively lifestyle or brand photo | A logo, an icon, a flat shape on a plain background |
+| Driver image, square | The device itself on a **white background** | The app image, the app icon |
+
+Once both pictures are chosen, this produces every required size, centre-cropping to the
 target aspect before resizing so nothing is stretched:
 
 ```sh
-node tools/build-images.mjs app    path/to/picture.jpg   # 250x175, 500x350, 1000x700
-node tools/build-images.mjs camera path/to/picture.jpg   # 75x75, 500x500, 1000x1000
+node tools/build-images.mjs app    path/to/lifestyle-photo.jpg   # 250x175, 500x350, 1000x700
+node tools/build-images.mjs camera path/to/camera-on-white.jpg   # 75x75, 500x500, 1000x1000
 ```
 
 It warns when the source is too small to fill the largest size. Requires `sips`, which
