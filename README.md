@@ -111,13 +111,22 @@ container on your machine, so it needs a Docker daemon. `homey app install` does
 ```sh
 npx homey api diagnose                # which discovery strategies reach the Homey
 npx homey api apps get-app --id com.dataweavelabs.scrypted --json   # state, crashed, memory
-npx homey app manage                  # open the app in Homey Developer Tools (live logs)
 ```
 
 `get-app` reporting `"state": "running", "crashed": false` is the quickest confirmation
-that the app booted on the Homey. The Developer Tools page carries the live log output,
-where the app prints `Connected to Scrypted <version> via <strategy>` once a server is
-configured.
+that the app booted on the Homey.
+
+**There is no way to read the logs of a CLI-installed app.** `homey app manage` opens
+Homey Developer Tools, which only lists apps submitted to the App Store — an app installed
+with `homey app install` has `origin: devkit_install` and never appears there. The CLI has
+no `app log` command either, and `homey api devkit get-app-std-out` only serves a live
+`homey app run` session. Streaming logs therefore means `homey app run`, which needs
+Docker.
+
+For diagnosing the Scrypted connection specifically you do not need logs: the app's
+settings page (Homey app → More → Apps → Scrypted → Configure) shows the live connection
+status and renders the exact error Scrypted returned on a failed connect. The pairing
+form does the same inline.
 
 ## A note on credentials
 
