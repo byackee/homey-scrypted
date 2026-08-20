@@ -14,9 +14,9 @@
     "nl": "Scrypted"
   },
   "description": {
-    "en": "Bring your Scrypted cameras, detections and devices into Homey.",
-    "fr": "Intégrez vos caméras, détections et appareils Scrypted à Homey.",
-    "nl": "Breng je Scrypted-camera's, detecties en apparaten naar Homey."
+    "en": "Every camera, under one roof",
+    "fr": "Toutes vos caméras, sous un même toit",
+    "nl": "Al je camera's onder één dak"
   },
   "category": [
     "security"
