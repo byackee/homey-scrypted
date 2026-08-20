@@ -19,6 +19,10 @@ export default {
     return { ...app.getStatus(), config: app.getPublicConfig() };
   },
 
+  async getDiagnostics({ homey }: Request) {
+    return (homey.app as ScryptedApp).getDiagnostics();
+  },
+
   async setConfig({ homey, body }: Request) {
     const app = homey.app as ScryptedApp;
     await app.saveConfig({

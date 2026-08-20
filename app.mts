@@ -1,6 +1,7 @@
 import sourceMapSupport from 'source-map-support';
 import Homey from 'homey';
 import { ScryptedHub } from './lib/ScryptedHub.mjs';
+import { typesForDriver, type DriverId } from './lib/deviceTypeMap.mjs';
 import type { ScryptedConfig } from './lib/types.mjs';
 
 sourceMapSupport.install();
@@ -53,5 +54,60 @@ export default class ScryptedApp extends Homey.App {
 
   getStatus(): { connected: boolean; serverVersion?: string } {
     return { connected: this.hub.isConnected, serverVersion: this.hub.serverVersion };
+  }
+
+  /**
+   * Reports what the app actually sees on the Scrypted server.
+   *
+   * Pairing shows a filtered list, so an empty list is ambiguous: it could mean the server
+   * has no such devices, that the type filter excluded them, or that the system state
+   * never synced. This endpoint separates those cases. Reachable with:
+   *
+   *   homey api raw --method GET --path /api/app/com.dataweavelabs.scrypted/diagnostics
+   */
+  async getDiagnostics(): Promise<unknown> {
+    const client = await this.hub.getClient();
+    const state = client.systemManager.getSystemState();
+    const ids = Object.keys(state ?? {});
+
+    const typeCounts: Record<string, number> = {};
+    for (const id of ids) {
+      const type = String(state[id]?.type?.value ?? '(no type)');
+      typeCounts[type] = (typeCounts[type] ?? 0) + 1;
+    }
+
+    return {
+      serverVersion: this.hub.serverVersion,
+      systemStateEntries: ids.length,
+      typeCounts,
+      // The raw property keys of one entry, to confirm the { [prop]: { value } } shape.
+      firstEntryPropertyKeys: ids.length ? Object.keys(state[ids[0]!] ?? {}).slice(0, 20) : [],
+      sample: ids.slice(0, 5).map(id => ({
+        id,
+        type: state[id]?.type?.value,
+        name: state[id]?.name?.value,
+        interfaceCount: (state[id]?.interfaces?.value as string[] | undefined)?.length,
+      })),
+      // Exercises the exact call pairing makes, per driver, so an empty pairing list can
+      // be attributed to either this data path or the pairing plumbing above it.
+      pairPreview: await this.previewPairing(),
+    };
+  }
+
+  private async previewPairing(): Promise<Record<string, unknown>> {
+    const drivers: DriverId[] = ['camera', 'light', 'switch', 'sensor', 'lock', 'climate', 'security'];
+    const preview: Record<string, unknown> = {};
+
+    for (const driver of drivers) {
+      const types = typesForDriver(driver);
+      try {
+        const found = await this.hub.listDevices(types);
+        preview[driver] = { types, count: found.length, names: found.map(device => device.name) };
+      } catch (err) {
+        preview[driver] = { types, error: (err as Error).message };
+      }
+    }
+
+    return preview;
   }
 }

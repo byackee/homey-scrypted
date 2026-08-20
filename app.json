@@ -59,6 +59,10 @@
     "setConfig": {
       "method": "PUT",
       "path": "/config"
+    },
+    "getDiagnostics": {
+      "method": "GET",
+      "path": "/diagnostics"
     }
   },
   "esm": true,

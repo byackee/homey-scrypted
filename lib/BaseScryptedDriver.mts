@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { routeFor, typesForDriver, type DriverId } from './deviceTypeMap.mjs';
+import { typesForDriver, type DriverId } from './deviceTypeMap.mjs';
 import type { ScryptedHub } from './ScryptedHub.mjs';
 import type { ScryptedConfig } from './types.mjs';
 
@@ -88,12 +88,18 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
   /**
    * Lists the Scrypted devices this driver can adopt, excluding ones Homey already has.
    * Matching is by Scrypted device id, which survives renames on the Scrypted side.
+   *
+   * The returned objects must contain only the keys Homey accepts for a pairing result:
+   * name, data, store, settings, icon, capabilities and capabilitiesOptions. Homey rejects
+   * entries carrying anything else, and does so silently — the pairing list simply comes
+   * back empty with no error anywhere. In particular the Homey device class does not
+   * belong here; `BaseScryptedDevice` applies it with `setClass()` once the device
+   * initialises, which also keeps it correct if the Scrypted device changes type later.
    */
   private async listPairableDevices(): Promise<Array<{
     name: string;
     data: { id: string };
-    class?: string;
-    settings?: Record<string, unknown>;
+    store: { scryptedType: string };
   }>> {
     const alreadyPaired = new Set(
       this.getDevices().map(device => (device.getData() as { id?: string }).id).filter(Boolean),
@@ -106,7 +112,7 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
       .map(candidate => ({
         name: candidate.room ? `${candidate.name} (${candidate.room})` : candidate.name,
         data: { id: candidate.id },
-        class: routeFor(candidate.type)?.homeyClass,
+        store: { scryptedType: candidate.type },
       }));
   }
 }
