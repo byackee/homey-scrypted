@@ -8,6 +8,11 @@ sourceMapSupport.install();
 
 const SETTINGS_KEY = 'scrypted.config';
 
+/** Hides any user:password embedded in a URL before it reaches the diagnostics output. */
+function maskCredentials(url?: string): string | undefined {
+  return url?.replace(/\/\/[^/@]+@/, '//***:***@');
+}
+
 /**
  * The Scrypted app.
  *
@@ -110,8 +115,55 @@ export default class ScryptedApp extends Homey.App {
       // Exercises the exact call pairing makes, per driver, so an empty pairing list can
       // be attributed to either this data path or the pairing plumbing above it.
       pairPreview: await this.previewPairing(),
+      videoProbe: await this.probeVideo(),
       traces: this.traces,
     };
+  }
+
+  /**
+   * Resolves the stream URL for every camera exactly the way the camera driver does.
+   *
+   * Homey's player reports only "unable to open the MRL", which says nothing about what
+   * it was handed. Credentials in the URL are masked; the host, port and scheme are what
+   * matter, since a rebroadcast URL bound to localhost is unusable from Homey.
+   */
+  private async probeVideo(): Promise<unknown[]> {
+    const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
+    const results: unknown[] = [];
+
+    for (const camera of cameras) {
+      const entry: Record<string, unknown> = { name: camera.name, id: camera.id };
+      try {
+        const device = await this.hub.getDevice(camera.id);
+        if (!device || typeof device.getVideoStream !== 'function') {
+          entry.error = 'no VideoCamera interface';
+          results.push(entry);
+          continue;
+        }
+
+        entry.streamOptions = (await device.getVideoStreamOptions())
+          ?.map((option: Record<string, unknown>) => ({
+            id: option.id,
+            name: option.name,
+            container: option.container,
+            source: option.source,
+          }));
+
+        const media = await device.getVideoStream();
+        const mediaManager = await this.hub.getMediaManager();
+        const streamUrl = await mediaManager.convertMediaObjectToJSON<{ url?: string; container?: string }>(
+          media,
+          'text/x-media-url',
+        );
+        entry.container = streamUrl?.container;
+        entry.url = maskCredentials(streamUrl?.url);
+      } catch (err) {
+        entry.error = (err as Error).message;
+      }
+      results.push(entry);
+    }
+
+    return results;
   }
 
   private async previewPairing(): Promise<Record<string, unknown>> {

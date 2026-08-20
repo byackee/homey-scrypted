@@ -1,20 +1,40 @@
 {
-  "name": { "en": "Light", "fr": "Lumière", "nl": "Lamp" },
+  "name": {
+    "en": "Light",
+    "fr": "Lumière",
+    "nl": "Lamp"
+  },
   "class": "light",
-  "capabilities": ["onoff"],
-  "platforms": ["local"],
-  "connectivity": ["lan"],
+  "capabilities": [
+    "onoff"
+  ],
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
   "images": {
     "small": "/drivers/light/assets/images/small.png",
     "large": "/drivers/light/assets/images/large.png",
     "xlarge": "/drivers/light/assets/images/xlarge.png"
   },
   "pair": [
-    { "id": "configure", "navigation": { "next": "list_devices" } },
-    { "id": "list_devices", "template": "list_devices", "navigation": { "next": "add_devices" } },
-    { "id": "add_devices", "template": "add_devices" }
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
   ],
   "repair": [
-    { "id": "configure" }
+    {
+      "id": "configure"
+    }
   ]
 }

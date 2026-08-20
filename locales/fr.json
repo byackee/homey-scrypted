@@ -14,7 +14,8 @@
     "not_connected": "Non connecté à Scrypted.",
     "device_missing": "Cet appareil n'existe plus sur le serveur Scrypted.",
     "no_video": "Cet appareil Scrypted n'expose pas de flux vidéo.",
-    "no_snapshot": "Cet appareil Scrypted n'expose pas d'instantané."
+    "no_snapshot": "Cet appareil Scrypted n'expose pas d'instantané.",
+    "configure_first": "Ouvrez d'abord les réglages de l'app Scrypted et saisissez les informations de votre serveur."
   },
   "settings": {
     "title": "Scrypted",

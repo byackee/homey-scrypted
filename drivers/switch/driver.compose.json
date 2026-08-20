@@ -1,20 +1,40 @@
 {
-  "name": { "en": "Switch", "fr": "Interrupteur", "nl": "Schakelaar" },
+  "name": {
+    "en": "Switch",
+    "fr": "Interrupteur",
+    "nl": "Schakelaar"
+  },
   "class": "socket",
-  "capabilities": ["onoff"],
-  "platforms": ["local"],
-  "connectivity": ["lan"],
+  "capabilities": [
+    "onoff"
+  ],
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
   "images": {
     "small": "/drivers/switch/assets/images/small.png",
     "large": "/drivers/switch/assets/images/large.png",
     "xlarge": "/drivers/switch/assets/images/xlarge.png"
   },
   "pair": [
-    { "id": "configure", "navigation": { "next": "list_devices" } },
-    { "id": "list_devices", "template": "list_devices", "navigation": { "next": "add_devices" } },
-    { "id": "add_devices", "template": "add_devices" }
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
   ],
   "repair": [
-    { "id": "configure" }
+    {
+      "id": "configure"
+    }
   ]
 }

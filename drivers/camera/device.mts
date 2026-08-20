@@ -3,6 +3,7 @@ import type { EventDetails, MediaStreamUrl, ObjectsDetected } from '@scrypted/ty
 import { BaseScryptedDevice } from '../../lib/BaseScryptedDevice.mjs';
 import { detectionGroupFor, OBJECT_DETECTION_CAPABILITIES } from '../../lib/capabilityMap.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
+import { isLoopbackUrl, rewriteLoopbackHost } from '../../lib/streamUrl.mjs';
 import type { AnyScryptedDevice } from '../../lib/types.mjs';
 
 /** Homey rejects images above 5 MB, so an oversized frame is reported rather than sent. */
@@ -154,6 +155,17 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     );
 
     if (!streamUrl?.url) throw new Error('Scrypted returned no stream URL for this camera.');
+
+    // Scrypted's rebroadcast plugin advertises 127.0.0.1, which from Homey means Homey.
+    // Point it back at the server we are connected to; the port and path are what identify
+    // the rebroadcast session and are left alone.
+    const host = this.hub.getConfig()?.host;
+    if (host && isLoopbackUrl(streamUrl.url)) {
+      const rewritten = rewriteLoopbackHost(streamUrl.url, host);
+      this.log(`Rewrote loopback stream URL to ${host}`);
+      return rewritten;
+    }
+
     return streamUrl.url;
   }
 

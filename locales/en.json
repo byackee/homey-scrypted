@@ -14,7 +14,8 @@
     "not_connected": "Not connected to Scrypted.",
     "device_missing": "This device no longer exists on the Scrypted server.",
     "no_video": "This Scrypted device does not expose a video stream.",
-    "no_snapshot": "This Scrypted device does not expose a snapshot."
+    "no_snapshot": "This Scrypted device does not expose a snapshot.",
+    "configure_first": "Open the Scrypted app settings and enter your server details first."
   },
   "settings": {
     "title": "Scrypted",

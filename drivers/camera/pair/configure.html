@@ -49,34 +49,33 @@
 <button id="connect" data-i18n="pair.server.connect"></button>
 
 <script type="application/javascript">
+  /*
+   * This view is used for repair only.
+   *
+   * Pairing goes straight to the device list: a custom view followed by a system template
+   * could not be navigated into — both Homey.showView() and Homey.nextView() failed inside
+   * Homey's pairing frontend with "null is not an object (evaluating '$(otherView).html')",
+   * leaving the screen blank. The server is configured from the app's settings page instead.
+   */
   const $ = id => document.getElementById(id);
   const errorEl = $('error');
   const button = $('connect');
 
-  /*
-   * Navigation is decided here rather than in the driver's showView handler: calling
-   * session.showView() from inside that handler deadlocks the pairing session.
-   *
-   * When a server is already configured, skip straight to the device list. Repair does not
-   * answer isConnected, so it always falls through to the form.
-   */
-  Homey.emit('isConnected', null)
-    .then(connected => {
-      if (connected) return Homey.showView('list_devices');
-      return prefill();
-    })
-    .catch(prefill);
-
-  function prefill() {
-    return Homey.emit('getConfig', null)
-      .then(config => {
-        if (!config) return;
-        $('host').value = config.host || '';
-        $('port').value = config.port || 10443;
-        $('username').value = config.username || '';
-      })
-      .catch(() => { /* No stored config yet; an empty form is correct. */ });
+  // Cheap insurance: a script error in a pairing view is otherwise invisible, since a
+  // CLI-installed app has no readable log. The driver records these into /diagnostics.
+  function report(message) {
+    try { Homey.emit('viewLog', String(message)); } catch (err) { /* nothing we can do */ }
   }
+  window.addEventListener('error', event => report('view error: ' + event.message));
+
+  Homey.emit('getConfig', null)
+    .then(config => {
+      if (!config) return;
+      $('host').value = config.host || '';
+      $('port').value = config.port || 10443;
+      $('username').value = config.username || '';
+    })
+    .catch(() => { /* No stored config yet; an empty form is correct. */ });
 
   function submit() {
     errorEl.textContent = '';
@@ -88,7 +87,7 @@
       username: $('username').value,
       password: $('password').value,
     })
-      .then(() => Homey.nextView())
+      .then(() => Homey.done())
       .catch(err => {
         errorEl.textContent = (err && err.message) || String(err);
         button.disabled = false;

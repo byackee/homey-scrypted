@@ -286,12 +286,6 @@
       },
       "pair": [
         {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
-        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
@@ -373,12 +367,6 @@
       },
       "pair": [
         {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
-        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
@@ -419,12 +407,6 @@
         "xlarge": "/drivers/light/assets/images/xlarge.png"
       },
       "pair": [
-        {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
         {
           "id": "list_devices",
           "template": "list_devices",
@@ -467,12 +449,6 @@
       },
       "pair": [
         {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
-        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
@@ -513,12 +489,6 @@
         "xlarge": "/drivers/security/assets/images/xlarge.png"
       },
       "pair": [
-        {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
         {
           "id": "list_devices",
           "template": "list_devices",
@@ -561,12 +531,6 @@
       },
       "pair": [
         {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
-        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
@@ -607,12 +571,6 @@
         "xlarge": "/drivers/switch/assets/images/xlarge.png"
       },
       "pair": [
-        {
-          "id": "configure",
-          "navigation": {
-            "next": "list_devices"
-          }
-        },
         {
           "id": "list_devices",
           "template": "list_devices",

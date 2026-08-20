@@ -31,7 +31,7 @@ network — without port forwarding and without this app doing any NAT traversal
 
 1. In Scrypted, make sure the **Rebroadcast** plugin is enabled for the cameras you want to
    stream. It is what publishes the RTSP URL this app hands to Homey.
-2. In Homey, add a device from this app. The first pairing asks for your Scrypted server:
+2. In Homey, open **More → Apps → Scrypted → Configure** and enter your server:
 
    | Field | Example |
    | --- | --- |
@@ -41,11 +41,19 @@ network — without port forwarding and without this app doing any NAT traversal
    | Password | your password, or a login token from `npx scrypted login` |
 
    A login token is preferable to a password: it can be revoked without changing your
-   Scrypted credentials.
-3. Pick the devices to add. Later pairings skip the server form.
+   Scrypted credentials. The page shows the connection status, and reports Scrypted's own
+   error verbatim if it fails.
+3. Then add devices: **Devices → + → Scrypted → Camera** (or Light, Sensor…). The list
+   shows everything on the server that this driver can adopt.
 
-The server can be changed afterwards from the app's settings page, or by repairing any
-device. Scrypted's self-signed certificate is accepted automatically.
+Configuration deliberately lives in the settings page rather than in the pairing flow. A
+custom pairing view followed by a system template could not be navigated into: both
+`Homey.showView()` and `Homey.nextView()` fail inside Homey's pairing frontend with
+`null is not an object (evaluating '$(otherView).html')`, which leaves the pairing screen
+blank. Pairing therefore uses the plain template flow with no navigation code of its own.
+
+Scrypted's self-signed certificate is accepted automatically. The server can be changed
+later from the same settings page, or by repairing any device.
 
 ## How it is built
 
@@ -153,6 +161,14 @@ which sets `rejectUnauthorized: false` itself, and applies only to this app's ow
   the last detection (30 by default, per camera).
 - **Snapshots are capped at 5 MB** by Homey. Larger frames are reported as an error rather
   than silently truncated.
+- **Rebroadcast URLs are rewritten.** Scrypted advertises its RTSP endpoints on `127.0.0.1`,
+  because the consumers it was built for run inside the Scrypted process. From Homey that
+  address is the Homey itself, and the player fails with "unable to open the MRL". The app
+  substitutes the configured Scrypted host, keeping the port and path, which identify the
+  rebroadcast session. See `lib/streamUrl.mts`.
+- **A camera whose credentials are wrong in Scrypted** fails with `auth failed` from
+  Scrypted's prebuffer plugin. That is a Scrypted-side configuration problem; the same
+  camera fails in Scrypted's own UI and in HomeKit.
 - Scrypted's thermostat modes are richer than Homey's four: `Eco`, `Dry`, `FanOnly` and
   `Purifier` are shown as `auto`, and only modes with an exact match are written back.
 

@@ -14,7 +14,8 @@
     "not_connected": "Niet verbonden met Scrypted.",
     "device_missing": "Dit apparaat bestaat niet meer op de Scrypted-server.",
     "no_video": "Dit Scrypted-apparaat biedt geen videostream.",
-    "no_snapshot": "Dit Scrypted-apparaat biedt geen momentopname."
+    "no_snapshot": "Dit Scrypted-apparaat biedt geen momentopname.",
+    "configure_first": "Open eerst de instellingen van de Scrypted-app en vul je servergegevens in."
   },
   "settings": {
     "title": "Scrypted",

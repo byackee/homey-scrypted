@@ -53,41 +53,28 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
   override async onPair(session: Homey.Driver.PairSession): Promise<void> {
     this.trace(`onPair start (connected=${this.hub.isConnected})`);
 
-    // Navigation is driven by the pairing view, not from here. Calling
-    // `session.showView()` inside the `showView` handler deadlocks: Homey waits for the
-    // handler to return before completing the transition, while the handler waits for the
-    // transition. The session then hangs silently with no error and no timeout.
     session.setHandler('showView', async (view: string) => {
       this.trace(`showView ${view}`);
-    });
-
-    // The view asks this first, and skips straight to the device list when a server is
-    // already configured so pairing a second device does not ask for the password again.
-    session.setHandler('isConnected', async () => this.hub.isConnected);
-
-    session.setHandler('getConfig', async () => this.publicConfig());
-
-    session.setHandler('configure', async (data: ConfigureRequest) => {
-      const config = this.normaliseConfig(data);
-      const result = await this.hub.probe(config);
-      await this.appApi.saveConfig(config);
-      return result;
     });
 
     session.setHandler('list_devices', async () => {
       this.trace('list_devices handler called');
       try {
         const devices = await this.listPairableDevices();
-        this.trace(`list_devices returning ${devices.length}: ${JSON.stringify(devices)}`);
+        this.trace(`list_devices returning ${devices.length}`);
         return devices;
       } catch (err) {
-        this.trace(`list_devices FAILED: ${(err as Error).stack ?? (err as Error).message}`);
+        this.trace(`list_devices FAILED: ${(err as Error).message}`);
         throw err;
       }
     });
   }
 
   override async onRepair(session: Homey.Driver.PairSession): Promise<void> {
+    session.setHandler('viewLog', async (message: unknown) => {
+      this.trace(`repair view: ${String(message)}`);
+    });
+
     session.setHandler('configure', async (data: ConfigureRequest) => {
       const config = this.normaliseConfig(data);
       const result = await this.hub.probe(config);
@@ -137,6 +124,12 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
     data: { id: string };
     store: { scryptedType: string };
   }>> {
+    if (!this.hub.isConnected) {
+      // Pairing goes straight to the device list, so the server has to be configured
+      // beforehand in the app's settings. Say so rather than showing an empty list.
+      throw new Error(this.homey.__('errors.configure_first'));
+    }
+
     const alreadyPaired = new Set(
       this.getDevices().map(device => (device.getData() as { id?: string }).id).filter(Boolean),
     );
