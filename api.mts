@@ -19,8 +19,8 @@ export default {
     return { ...app.getStatus(), config: app.getPublicConfig() };
   },
 
-  async getDiagnostics({ homey }: Request) {
-    return (homey.app as ScryptedApp).getDiagnostics();
+  async getDiagnostics({ homey, query }: Request) {
+    return (homey.app as ScryptedApp).getDiagnostics({ video: query.video === '1' });
   },
 
   async setConfig({ homey, body }: Request) {

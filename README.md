@@ -119,6 +119,14 @@ container on your machine, so it needs a Docker daemon. `homey app install` does
 ```sh
 npx homey api diagnose                # which discovery strategies reach the Homey
 npx homey api apps get-app --id com.dataweavelabs.scrypted --json   # state, crashed, memory
+
+# What the app sees on the Scrypted server: system-state contents, device types, the
+# pairing result per driver, the capabilities of each paired device, and a trace buffer.
+npx homey api raw --method GET \
+  --path /api/app/com.dataweavelabs.scrypted/diagnostics --json
+
+# Add ?video=1 to also resolve each camera's stream URL, credentials masked. It is opt-in
+# because resolving a URL asks Scrypted to start the stream.
 ```
 
 `get-app` reporting `"state": "running", "crashed": false` is the quickest confirmation
@@ -171,6 +179,29 @@ which sets `rejectUnauthorized: false` itself, and applies only to this app's ow
   camera fails in Scrypted's own UI and in HomeKit.
 - Scrypted's thermostat modes are richer than Homey's four: `Eco`, `Dry`, `FanOnly` and
   `Purifier` are shown as `auto`, and only modes with an exact match are written back.
+- **Detection classes come from the camera's own detector.** A camera whose model reports
+  only `person`, `animal`, `face` and `motion` gets exactly those alarms and no
+  `alarm_vehicle`, rather than a tile that would never become true. The Flow trigger still
+  offers every class; the ones a camera cannot detect simply never fire for it.
+
+## Two things worth knowing if you extend this
+
+Both cost real debugging time, and neither is caught by the compiler.
+
+**Event subscriptions must name the interface.** `device.listen({ watch: true }, cb)`
+type-checks, returns a valid `EventListenerRegister`, throws nothing — and delivers no
+events at all. Use the form Scrypted's own examples use, one listener per interface:
+
+```ts
+device.listen(ScryptedInterface.ObjectDetector, (source, details, data) => { … });
+```
+
+**Homey's SDK types are permissive where the runtime is strict.** Pairing results are typed
+`Promise<any[]>` but Homey silently drops an entry carrying a key outside its accepted set.
+A CLI-installed app has no readable log, so failures like these surface as an empty list or
+a blank screen with nothing anywhere to explain them. That is what `/diagnostics` and the
+trace buffer are for: they located every defect found on real hardware here, after several
+plausible readings of the documentation had pointed at the wrong cause.
 
 ## Licence
 

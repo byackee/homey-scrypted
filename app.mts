@@ -88,8 +88,10 @@ export default class ScryptedApp extends Homey.App {
    * never synced. This endpoint separates those cases. Reachable with:
    *
    *   homey api raw --method GET --path /api/app/com.dataweavelabs.scrypted/diagnostics
+   *
+   * Add ?video=1 to also resolve each camera's stream URL.
    */
-  async getDiagnostics(): Promise<unknown> {
+  async getDiagnostics(options: { video?: boolean } = {}): Promise<unknown> {
     const client = await this.hub.getClient();
     const state = client.systemManager.getSystemState();
     const ids = Object.keys(state ?? {});
@@ -115,7 +117,10 @@ export default class ScryptedApp extends Homey.App {
       // Exercises the exact call pairing makes, per driver, so an empty pairing list can
       // be attributed to either this data path or the pairing plumbing above it.
       pairPreview: await this.previewPairing(),
-      videoProbe: await this.probeVideo(),
+      // Opt-in: resolving a stream URL asks Scrypted to start the stream, which a
+      // diagnostics read should not do by itself.
+      videoProbe: options.video ? await this.probeVideo() : 'pass ?video=1 to probe streams',
+      pairedDevices: this.describePairedDevices(),
       traces: this.traces,
     };
   }
@@ -127,6 +132,22 @@ export default class ScryptedApp extends Homey.App {
    * it was handed. Credentials in the URL are masked; the host, port and scheme are what
    * matter, since a rebroadcast URL bound to localhost is unusable from Homey.
    */
+  /** The capabilities each paired Homey device currently carries. */
+  private describePairedDevices(): unknown[] {
+    const described: unknown[] = [];
+    for (const driver of Object.values(this.homey.drivers.getDrivers())) {
+      for (const device of driver.getDevices()) {
+        described.push({
+          driver: driver.id,
+          name: device.getName(),
+          available: device.getAvailable(),
+          capabilities: device.getCapabilities(),
+        });
+      }
+    }
+    return described;
+  }
+
   private async probeVideo(): Promise<unknown[]> {
     const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
     const results: unknown[] = [];
@@ -157,6 +178,13 @@ export default class ScryptedApp extends Homey.App {
         );
         entry.container = streamUrl?.container;
         entry.url = maskCredentials(streamUrl?.url);
+
+        // What the camera's detector can report, which decides the alarm capabilities the
+        // device exposes. A camera with no ObjectDetector interface gets none, by design.
+        entry.hasObjectDetector = camera.interfaces.includes('ObjectDetector');
+        if (entry.hasObjectDetector && typeof device.getObjectTypes === 'function') {
+          entry.detectionClasses = (await device.getObjectTypes())?.classes;
+        }
       } catch (err) {
         entry.error = (err as Error).message;
       }

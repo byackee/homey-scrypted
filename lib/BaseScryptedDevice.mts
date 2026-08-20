@@ -9,6 +9,7 @@ import type { AnyScryptedDevice } from './types.mjs';
 /** Shape of the Homey app object this device expects, kept local to avoid a circular import. */
 interface ScryptedAppLike {
   hub: ScryptedHub;
+  trace(message: string): void;
 }
 
 export interface ScryptedDeviceData {
@@ -30,7 +31,7 @@ export class BaseScryptedDevice extends Homey.Device {
   protected scryptedId = '';
   protected scryptedDevice: AnyScryptedDevice | null = null;
 
-  private eventRegister: EventListenerRegister | null = null;
+  private eventRegisters: EventListenerRegister[] = [];
   private bindings: CapabilityBinding[] = [];
   private bindingsByInterface = new Map<string, CapabilityBinding[]>();
   /** Capabilities that already have a Homey listener, which may only be registered once. */
@@ -40,6 +41,15 @@ export class BaseScryptedDevice extends Homey.Device {
 
   protected get hub(): ScryptedHub {
     return (this.homey.app as unknown as ScryptedAppLike).hub;
+  }
+
+  /** Records a line into the app's trace buffer, which /diagnostics exposes. */
+  protected trace(message: string): void {
+    try {
+      (this.homey.app as unknown as ScryptedAppLike).trace(`{${this.getName()}} ${message}`);
+    } catch {
+      // Tracing must never break the flow it observes.
+    }
   }
 
   override async onInit(): Promise<void> {
@@ -74,12 +84,14 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   private removeEventRegister(): void {
-    try {
-      this.eventRegister?.removeListener();
-    } catch {
-      // The register dies with the socket; failing to unregister it is not actionable.
+    for (const register of this.eventRegisters) {
+      try {
+        register.removeListener();
+      } catch {
+        // The register dies with the socket; failing to unregister it is not actionable.
+      }
     }
-    this.eventRegister = null;
+    this.eventRegisters = [];
   }
 
   private async handleHubDisconnected(): Promise<void> {
@@ -106,6 +118,7 @@ export class BaseScryptedDevice extends Homey.Device {
         interfaces: (device.interfaces ?? []) as string[],
       };
 
+      this.trace(`sync: type=${facts.type} interfaces=${facts.interfaces.join(',')}`);
       this.bindings = bindingsFor(facts);
       this.bindingsByInterface = new Map();
       for (const binding of this.bindings) {
@@ -122,7 +135,7 @@ export class BaseScryptedDevice extends Homey.Device {
       await this.syncCapabilities();
       this.registerWriters();
       await this.seedValues(device);
-      this.subscribeToEvents(device);
+      this.subscribeToEvents(device, facts.interfaces);
       await this.onScryptedSynced(device, facts.interfaces);
 
       const online = facts.interfaces.includes(ScryptedInterface.Online)
@@ -222,19 +235,35 @@ export class BaseScryptedDevice extends Homey.Device {
     }
   }
 
-  private subscribeToEvents(device: AnyScryptedDevice): void {
+  /**
+   * Subscribes to every interface the Scrypted device declares.
+   *
+   * One listener per interface, which is the form Scrypted documents and uses in its own
+   * examples. A single catch-all `listen({ watch: true }, …)` delivered no events at all —
+   * not even property changes — so the interface must be named explicitly.
+   */
+  private subscribeToEvents(device: AnyScryptedDevice, interfaces: string[]): void {
     this.removeEventRegister();
 
-    // A single passive listener covers every interface on the device. `watch: true` keeps
-    // Scrypted from starting a poll on our behalf, which matters for battery cameras.
-    this.eventRegister = device.listen({ watch: true }, (_source, details: EventDetails, data: unknown) => {
-      void this.handleScryptedEvent(details, data);
-    });
+    for (const iface of interfaces) {
+      try {
+        this.eventRegisters.push(
+          device.listen(iface, (_source: unknown, details: EventDetails, data: unknown) => {
+            void this.handleScryptedEvent(details, data);
+          }),
+        );
+      } catch (err) {
+        this.error(`listen ${iface} failed:`, (err as Error).message);
+      }
+    }
+
+    this.trace(`subscribed to ${this.eventRegisters.length} interface(s)`);
   }
 
   private async handleScryptedEvent(details: EventDetails, data: unknown): Promise<void> {
     const device = this.scryptedDevice;
     if (!device) return;
+
 
     if (details.eventInterface === ScryptedInterface.Online) {
       if (data === false) await this.setUnavailable('Offline in Scrypted').catch(() => undefined);

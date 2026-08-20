@@ -196,6 +196,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
 
     discovered.add('scrypted_detection');
     this.detectionCapabilities = discovered;
+    this.trace(`detection capabilities: ${[...discovered].join(',')}`);
   }
 
   protected override async onScryptedEvent(
@@ -219,6 +220,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   private async handleDetection(detected: ObjectsDetected, device: AnyScryptedDevice): Promise<void> {
     const detections = detected?.detections ?? [];
     if (!detections.length) return;
+
+    // Only classes that map to something are worth recording; a bare motion detection
+    // arrives many times a second and is already covered by alarm_motion.
+    if (detections.some(d => String(d.className).toLowerCase() !== 'motion')) {
+      this.trace(`detection: ${JSON.stringify(detections.map(d => ({ c: d.className, s: d.score })))}`);
+    }
 
     const { detection_min_score: minScore } = this.settings;
 
