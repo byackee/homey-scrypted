@@ -2,26 +2,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isLoopbackUrl, rewriteLoopbackHost } from '../lib/streamUrl.mjs';
 
-const HOST = '192.168.50.128';
+const HOST = '192.168.1.50';
 
 test('a loopback rebroadcast URL is pointed at the Scrypted host', () => {
-  // The exact shape Scrypted's rebroadcast plugin returned on a real server.
+  // The shape Scrypted's rebroadcast plugin returns: a session id and a device id.
   assert.equal(
-    rewriteLoopbackHost('rtsp://127.0.0.1:51090/9af7a580a4b06283/76', HOST),
-    'rtsp://192.168.50.128:51090/9af7a580a4b06283/76',
+    rewriteLoopbackHost('rtsp://127.0.0.1:51090/a1b2c3d4e5f60718/42', HOST),
+    'rtsp://192.168.1.50:51090/a1b2c3d4e5f60718/42',
   );
 });
 
 test('port, path and scheme survive the rewrite', () => {
-  assert.equal(rewriteLoopbackHost('rtsp://localhost:8554/live/1', HOST), 'rtsp://192.168.50.128:8554/live/1');
-  assert.equal(rewriteLoopbackHost('http://[::1]:8080/snap.jpg', HOST), 'http://192.168.50.128:8080/snap.jpg');
-  assert.equal(rewriteLoopbackHost('rtsps://127.0.0.1:443/x', HOST), 'rtsps://192.168.50.128:443/x');
+  assert.equal(rewriteLoopbackHost('rtsp://localhost:8554/live/1', HOST), 'rtsp://192.168.1.50:8554/live/1');
+  assert.equal(rewriteLoopbackHost('http://[::1]:8080/snap.jpg', HOST), 'http://192.168.1.50:8080/snap.jpg');
+  assert.equal(rewriteLoopbackHost('rtsps://127.0.0.1:443/x', HOST), 'rtsps://192.168.1.50:443/x');
 });
 
 test('embedded credentials survive the rewrite', () => {
   assert.equal(
     rewriteLoopbackHost('rtsp://user:pass@127.0.0.1:554/stream', HOST),
-    'rtsp://user:pass@192.168.50.128:554/stream',
+    'rtsp://user:pass@192.168.1.50:554/stream',
   );
 });
 
