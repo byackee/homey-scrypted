@@ -169,7 +169,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     const match = (options ?? []).find((option: { destinations?: string[] }) =>
       option.destinations?.includes(destination));
 
-    this.log(`Requesting ${destination} stream:`, match?.id ? `id ${match.id}` : 'no tagged stream, asking by destination');
+    this.trace(`stream request: destination=${destination} -> ${match?.id ? `id ${match.id}` : 'by destination (no tagged stream)'}`);
     const media = await device.getVideoStream(match?.id ? { id: match.id } : { destination });
     const mediaManager = await this.hub.getMediaManager();
     const streamUrl = await mediaManager.convertMediaObjectToJSON<MediaStreamUrl>(
@@ -178,6 +178,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     );
 
     if (!streamUrl?.url) throw new Error('Scrypted returned no stream URL for this camera.');
+    this.trace(`stream resolved: ${streamUrl.url.replace(/\/\/[^/@]+@/, '//***@')}`);
 
     // Scrypted's rebroadcast plugin advertises 127.0.0.1, which from Homey means Homey.
     // Point it back at the server we are connected to; the port and path are what identify
