@@ -304,6 +304,55 @@
       ],
       "settings": [
         {
+          "id": "stream_destination",
+          "type": "dropdown",
+          "label": {
+            "en": "Video stream",
+            "fr": "Flux vidéo",
+            "nl": "Videostream"
+          },
+          "hint": {
+            "en": "Which stream to request from Scrypted. Cameras publish a full-resolution stream for local viewing and a smaller one for remote viewing. \"Remote\" works both at home and away; \"Local\" is sharper but many cameras only serve it on the local network.",
+            "fr": "Quel flux demander à Scrypted. Les caméras publient un flux pleine résolution pour l'usage local et un plus léger pour l'accès distant. « Distant » fonctionne chez soi comme à l'extérieur ; « Local » est plus net mais beaucoup de caméras ne le servent que sur le réseau local.",
+            "nl": "Welke stream van Scrypted wordt opgevraagd. \"Op afstand\" werkt zowel thuis als onderweg; \"Lokaal\" is scherper maar veel camera's bieden die alleen op het lokale netwerk aan."
+          },
+          "value": "remote",
+          "values": [
+            {
+              "id": "remote",
+              "label": {
+                "en": "Remote — works anywhere",
+                "fr": "Distant — fonctionne partout",
+                "nl": "Op afstand — werkt overal"
+              }
+            },
+            {
+              "id": "local",
+              "label": {
+                "en": "Local — highest quality",
+                "fr": "Local — qualité maximale",
+                "nl": "Lokaal — hoogste kwaliteit"
+              }
+            },
+            {
+              "id": "medium-resolution",
+              "label": {
+                "en": "Medium resolution",
+                "fr": "Résolution moyenne",
+                "nl": "Middelhoge resolutie"
+              }
+            },
+            {
+              "id": "low-resolution",
+              "label": {
+                "en": "Low resolution",
+                "fr": "Basse résolution",
+                "nl": "Lage resolutie"
+              }
+            }
+          ]
+        },
+        {
           "id": "detection_reset_seconds",
           "type": "number",
           "label": {

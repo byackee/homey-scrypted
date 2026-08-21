@@ -163,20 +163,32 @@ export default class ScryptedApp extends Homey.App {
         }
 
         entry.streamOptions = (await device.getVideoStreamOptions())
-          ?.map((option: Record<string, unknown>) => ({
+          ?.map((option: Record<string, any>) => ({
             id: option.id,
             name: option.name,
             container: option.container,
-            source: option.source,
+            videoCodec: option.video?.codec,
+            audioCodec: option.audio?.codec,
+            resolution: option.video?.width ? `${option.video.width}x${option.video.height}` : undefined,
+            destinations: option.destinations,
           }));
 
-        const media = await device.getVideoStream();
         const mediaManager = await this.hub.getMediaManager();
+        // Resolve both, so the difference between the default stream and the one meant for
+        // remote viewing is visible side by side.
+        // Exactly one stream is opened per camera. Each resolution starts a rebroadcast
+        // session, and cameras accept only a handful of concurrent RTSP clients — probing
+        // several streams at once is enough to make a camera fail that is otherwise fine.
+        const streamOptions = await device.getVideoStreamOptions();
+        const remoteOption = (streamOptions ?? []).find((o: any) => o.destinations?.includes('remote'));
+        entry.remoteStreamId = remoteOption?.id;
+
+        const media = await device.getVideoStream(
+          remoteOption?.id ? { id: remoteOption.id } : { destination: 'remote' });
         const streamUrl = await mediaManager.convertMediaObjectToJSON<{ url?: string; container?: string }>(
           media,
           'text/x-media-url',
         );
-        entry.container = streamUrl?.container;
         entry.url = maskCredentials(streamUrl?.url);
 
         // What the camera's detector can report, which decides the alarm capabilities the

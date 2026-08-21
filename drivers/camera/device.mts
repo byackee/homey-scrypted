@@ -1,5 +1,10 @@
 import { ScryptedInterface, ScryptedInterfaceProperty, ScryptedMimeTypes } from '@scrypted/types';
-import type { EventDetails, MediaStreamUrl, ObjectsDetected } from '@scrypted/types';
+import type {
+  EventDetails,
+  MediaStreamDestination,
+  MediaStreamUrl,
+  ObjectsDetected,
+} from '@scrypted/types';
 import { BaseScryptedDevice } from '../../lib/BaseScryptedDevice.mjs';
 import { detectionGroupFor, OBJECT_DETECTION_CAPABILITIES } from '../../lib/capabilityMap.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
@@ -15,6 +20,8 @@ const DEFAULT_MIN_SCORE = 0.5;
 interface CameraSettings {
   detection_reset_seconds: number;
   detection_min_score: number;
+  /** Which of Scrypted's streams to request. See `resolveStreamUrl`. */
+  stream_destination: MediaStreamDestination;
 }
 
 /**
@@ -44,6 +51,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     return {
       detection_reset_seconds: Number(raw.detection_reset_seconds ?? DEFAULT_RESET_SECONDS),
       detection_min_score: Number(raw.detection_min_score ?? DEFAULT_MIN_SCORE),
+      stream_destination: (raw.stream_destination ?? 'remote') as MediaStreamDestination,
     };
   }
 
@@ -147,7 +155,22 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       throw new Error(this.homey.__('errors.no_video'));
     }
 
-    const media = await device.getVideoStream();
+    // Cameras publish several streams, each tagged by Scrypted with the destinations it
+    // suits. Requesting none returns the default, typically the full-resolution stream
+    // tagged `local`, which is not what a viewer outside the network can be served — the
+    // difference between a picture and "unable to open the MRL" away from home.
+    //
+    // The stream is selected by id rather than by passing `destination`, because that
+    // field is a hint Scrypted does not always honour. Where no stream advertises the
+    // wanted destination the hint is passed instead and Scrypted decides, which is the
+    // right answer for a camera that publishes only one stream.
+    const destination = this.settings.stream_destination;
+    const options = await device.getVideoStreamOptions();
+    const match = (options ?? []).find((option: { destinations?: string[] }) =>
+      option.destinations?.includes(destination));
+
+    this.log(`Requesting ${destination} stream:`, match?.id ? `id ${match.id}` : 'no tagged stream, asking by destination');
+    const media = await device.getVideoStream(match?.id ? { id: match.id } : { destination });
     const mediaManager = await this.hub.getMediaManager();
     const streamUrl = await mediaManager.convertMediaObjectToJSON<MediaStreamUrl>(
       media,

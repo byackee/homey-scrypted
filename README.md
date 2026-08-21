@@ -254,6 +254,18 @@ which sets `rejectUnauthorized: false` itself, and applies only to this app's ow
   address is the Homey itself, and the player fails with "unable to open the MRL". The app
   substitutes the configured Scrypted host, keeping the port and path, which identify the
   rebroadcast session. See `lib/streamUrl.mts`.
+- **The stream is chosen, not defaulted.** A camera publishes several streams, and
+  Scrypted tags each with the destinations it suits. The default is usually the
+  full-resolution stream tagged `local`, which many cameras will not serve to a viewer
+  outside the network — the symptom is "unable to open the MRL" away from home while
+  everything works at home. The app requests the stream tagged for the destination chosen
+  in the camera's settings, `remote` by default, selecting it by id because `destination`
+  is only a hint Scrypted does not always honour. Set it to `local` per camera if you only
+  ever watch from home and want the sharper picture.
+- **Resolving a stream URL starts a stream.** Cameras accept only a handful of concurrent
+  RTSP clients, so opening several streams from one camera at once is enough to make a
+  healthy camera start failing. This is why the `/diagnostics` video probe is opt-in and
+  opens exactly one stream per camera.
 - **A camera whose credentials are wrong in Scrypted** fails with `auth failed` from
   Scrypted's prebuffer plugin. That is a Scrypted-side configuration problem; the same
   camera fails in Scrypted's own UI and in HomeKit.
