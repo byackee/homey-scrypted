@@ -169,7 +169,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     const match = (options ?? []).find((option: { destinations?: string[] }) =>
       option.destinations?.includes(destination));
 
-    this.trace(`stream request: destination=${destination} -> ${match?.id ? `id ${match.id}` : 'by destination (no tagged stream)'}`);
+    // There is deliberately no option here to drop the audio track. Scrypted's rebroadcast
+    // plugin serves the session it already holds and ignores `audio: null` on the request:
+    // measured on a real server, the SDP came back byte-identical with the audio track
+    // still present. Removing audio has to happen on the Scrypted side, by transcoding.
+    this.trace(`stream request: destination=${destination} `
+      + `-> ${match?.id ? `id ${match.id}` : 'by destination (no tagged stream)'}`);
     const media = await device.getVideoStream(match?.id ? { id: match.id } : { destination });
     const mediaManager = await this.hub.getMediaManager();
     const streamUrl = await mediaManager.convertMediaObjectToJSON<MediaStreamUrl>(

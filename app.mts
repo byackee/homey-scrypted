@@ -91,7 +91,9 @@ export default class ScryptedApp extends Homey.App {
    *
    * Add ?video=1 to also resolve each camera's stream URL.
    */
-  async getDiagnostics(options: { video?: boolean } = {}): Promise<unknown> {
+  async getDiagnostics(
+    options: { video?: boolean; settings?: string; noAudio?: boolean } = {},
+  ): Promise<unknown> {
     const client = await this.hub.getClient();
     const state = client.systemManager.getSystemState();
     const ids = Object.keys(state ?? {});
@@ -119,8 +121,11 @@ export default class ScryptedApp extends Homey.App {
       pairPreview: await this.previewPairing(),
       // Opt-in: resolving a stream URL asks Scrypted to start the stream, which a
       // diagnostics read should not do by itself.
-      videoProbe: options.video ? await this.probeVideo() : 'pass ?video=1 to probe streams',
+      videoProbe: options.video
+        ? await this.probeVideo({ noAudio: options.noAudio })
+        : 'pass ?video=1 to probe streams',
       pairedDevices: this.describePairedDevices(),
+      cameraSettings: options.settings ? await this.probeCameraSettings(options.settings) : undefined,
       traces: this.traces,
     };
   }
@@ -148,7 +153,32 @@ export default class ScryptedApp extends Homey.App {
     return described;
   }
 
-  private async probeVideo(): Promise<unknown[]> {
+  /**
+   * Lists the settings a Scrypted device exposes, including those its mixins add.
+   * Reading them from the server beats guessing at names that vary by plugin version.
+   */
+  private async probeCameraSettings(nameFilter: string): Promise<unknown> {
+    const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
+    const camera = cameras.find(c => c.name.toLowerCase().includes(nameFilter.toLowerCase()));
+    if (!camera) return `no camera matching "${nameFilter}"`;
+
+    const device = await this.hub.getDevice(camera.id);
+    if (typeof device?.getSettings !== 'function') return `${camera.name} exposes no Settings`;
+
+    const settings = await device.getSettings();
+    return {
+      camera: camera.name,
+      settings: (settings ?? []).map((setting: Record<string, any>) => ({
+        group: setting.group,
+        key: setting.key,
+        title: setting.title,
+        value: setting.value,
+        choices: setting.choices,
+      })),
+    };
+  }
+
+  private async probeVideo(options: { noAudio?: boolean } = {}): Promise<unknown[]> {
     const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
     const results: unknown[] = [];
 
@@ -183,8 +213,11 @@ export default class ScryptedApp extends Homey.App {
         const remoteOption = (streamOptions ?? []).find((o: any) => o.destinations?.includes('remote'));
         entry.remoteStreamId = remoteOption?.id;
 
-        const media = await device.getVideoStream(
-          remoteOption?.id ? { id: remoteOption.id } : { destination: 'remote' });
+        const request: Record<string, unknown> = remoteOption?.id
+          ? { id: remoteOption.id }
+          : { destination: 'remote' };
+        if (options.noAudio) request.audio = null;
+        const media = await device.getVideoStream(request);
         const streamUrl = await mediaManager.convertMediaObjectToJSON<{ url?: string; container?: string }>(
           media,
           'text/x-media-url',

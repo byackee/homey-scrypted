@@ -266,6 +266,11 @@ which sets `rejectUnauthorized: false` itself, and applies only to this app's ow
   RTSP clients, so opening several streams from one camera at once is enough to make a
   healthy camera start failing. This is why the `/diagnostics` video probe is opt-in and
   opens exactly one stream per camera.
+- **The audio track cannot be dropped from this side.** Scrypted's rebroadcast plugin
+  serves the session it already holds and ignores `audio: null` on the request — measured
+  against a real server, the SDP came back byte-identical with the audio track still
+  present. A camera whose audio codec a player will not accept has to be fixed in Scrypted,
+  by transcoding it into a synthetic stream, or on the camera itself.
 - **A camera whose credentials are wrong in Scrypted** fails with `auth failed` from
   Scrypted's prebuffer plugin. That is a Scrypted-side configuration problem; the same
   camera fails in Scrypted's own UI and in HomeKit.

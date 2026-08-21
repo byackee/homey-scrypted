@@ -20,7 +20,11 @@ export default {
   },
 
   async getDiagnostics({ homey, query }: Request) {
-    return (homey.app as ScryptedApp).getDiagnostics({ video: query.video === '1' });
+    return (homey.app as ScryptedApp).getDiagnostics({
+      video: query.video === '1',
+      settings: query.settings,
+      noAudio: query.noAudio === '1',
+    });
   },
 
   async setConfig({ homey, body }: Request) {
