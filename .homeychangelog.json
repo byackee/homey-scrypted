@@ -1,6 +1,8 @@
 {
   "1.0.0": {
-    "en": "English"
+    "en": "First release. Adds the cameras and doorbells from your Scrypted server, with live video and a snapshot on every tile. Person, animal and face detections arrive as alarms and Flow triggers, each carrying the frame that set it off.",
+    "fr": "Première version. Ajoute les caméras et sonnettes de votre serveur Scrypted, avec flux live et instantané sur chaque tuile. Les détections de personne, d'animal et de visage deviennent des alarmes et des déclencheurs de Flow, accompagnés de l'image qui les a déclenchées.",
+    "nl": "Eerste versie. Voegt de camera's en deurbellen van je Scrypted-server toe, met livebeeld en een momentopname op elke tegel. Detecties van personen, dieren en gezichten komen binnen als alarmen en Flow-triggers, met het beeld dat ze veroorzaakte."
   },
   "1.0.1": {
     "en": "Fixes cameras that played at home but not away: the app now requests the stream your camera intends for remote viewing, instead of the one meant for local use. Each camera gains a Video stream setting to choose it yourself.",
