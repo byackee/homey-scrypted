@@ -196,6 +196,14 @@ container on your machine, so it needs a Docker daemon. `homey app install` does
 
 ### Diagnostics
 
+If a camera plays at home but not away, work through it in this order — each step is
+cheaper than the next:
+
+1. Set that camera's **Video stream** setting to `Remote` (the default).
+2. In Scrypted, set the stream's **RTSP Parser** to `FFmpeg (TCP)`.
+3. In Scrypted, transcode the stream into a synthetic stream and assign it to
+   **Remote (Medium Resolution) Stream**.
+
 ```sh
 npx homey api diagnose                # which discovery strategies reach the Homey
 npx homey api apps get-app --id com.dataweavelabs.scrypted --json   # state, crashed, memory
@@ -271,6 +279,15 @@ which sets `rejectUnauthorized: false` itself, and applies only to this app's ow
   against a real server, the SDP came back byte-identical with the audio track still
   present. A camera whose audio codec a player will not accept has to be fixed in Scrypted,
   by transcoding it into a synthetic stream, or on the camera itself.
+- **A camera whose stream Homey will not play may need a different RTSP parser.** Scrypted
+  relays a stream with its own parser by default. Some cameras produce a stream that
+  survives this on the local network but that Homey's player refuses when it is proxied —
+  the symptom is again "unable to open the MRL" away from home, on that camera only, with
+  every other camera on the same server working. Switching that stream's **RTSP Parser** to
+  **FFmpeg (TCP)** in Scrypted fixes it: ffmpeg rebuilds the container and the
+  packetisation, and reconstructs missing timestamps, without re-encoding the video. This
+  was needed for a Tapo C210 whose stream was otherwise healthy — h264, correct SDP, media
+  flowing, verified with a direct RTSP handshake.
 - **A camera whose credentials are wrong in Scrypted** fails with `auth failed` from
   Scrypted's prebuffer plugin. That is a Scrypted-side configuration problem; the same
   camera fails in Scrypted's own UI and in HomeKit.

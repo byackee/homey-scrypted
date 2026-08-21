@@ -92,7 +92,7 @@ export default class ScryptedApp extends Homey.App {
    * Add ?video=1 to also resolve each camera's stream URL.
    */
   async getDiagnostics(
-    options: { video?: boolean; settings?: string; noAudio?: boolean } = {},
+    options: { video?: boolean; plugins?: boolean } = {},
   ): Promise<unknown> {
     const client = await this.hub.getClient();
     const state = client.systemManager.getSystemState();
@@ -121,11 +121,9 @@ export default class ScryptedApp extends Homey.App {
       pairPreview: await this.previewPairing(),
       // Opt-in: resolving a stream URL asks Scrypted to start the stream, which a
       // diagnostics read should not do by itself.
-      videoProbe: options.video
-        ? await this.probeVideo({ noAudio: options.noAudio })
-        : 'pass ?video=1 to probe streams',
+      videoProbe: options.video ? await this.probeVideo() : 'pass ?video=1 to probe streams',
       pairedDevices: this.describePairedDevices(),
-      cameraSettings: options.settings ? await this.probeCameraSettings(options.settings) : undefined,
+      plugins: options.plugins ? await this.probePlugins() : undefined,
       traces: this.traces,
     };
   }
@@ -154,31 +152,36 @@ export default class ScryptedApp extends Homey.App {
   }
 
   /**
-   * Lists the settings a Scrypted device exposes, including those its mixins add.
-   * Reading them from the server beats guessing at names that vary by plugin version.
+   * Every device Scrypted knows, with the plugin providing it and the extensions applied.
+   * Comparing the extension list of a camera that works against one that does not is what
+   * located the difference between them here.
    */
-  private async probeCameraSettings(nameFilter: string): Promise<unknown> {
-    const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
-    const camera = cameras.find(c => c.name.toLowerCase().includes(nameFilter.toLowerCase()));
-    if (!camera) return `no camera matching "${nameFilter}"`;
+  private async probePlugins(): Promise<unknown> {
+    const client = await this.hub.getClient();
+    const state = client.systemManager.getSystemState();
+    const rows: unknown[] = [];
 
-    const device = await this.hub.getDevice(camera.id);
-    if (typeof device?.getSettings !== 'function') return `${camera.name} exposes no Settings`;
-
-    const settings = await device.getSettings();
-    return {
-      camera: camera.name,
-      settings: (settings ?? []).map((setting: Record<string, any>) => ({
-        group: setting.group,
-        key: setting.key,
-        title: setting.title,
-        value: setting.value,
-        choices: setting.choices,
-      })),
-    };
+    for (const id of Object.keys(state ?? {})) {
+      const entry = state[id] as Record<string, { value?: any }>;
+      const mixinIds = (entry?.mixins?.value ?? []) as string[];
+      rows.push({
+        id,
+        name: entry?.name?.value,
+        type: entry?.type?.value,
+        pluginId: entry?.pluginId?.value,
+        version: entry?.info?.value?.version,
+        // Mixin providers are often Internal devices a non-admin session cannot resolve,
+        // so ids that do not map to a name are reported as ids.
+        mixins: mixinIds.map(mixinId => {
+          const provider = state[mixinId] as Record<string, { value?: any }> | undefined;
+          return provider?.name?.value ?? provider?.pluginId?.value ?? mixinId;
+        }),
+      });
+    }
+    return rows;
   }
 
-  private async probeVideo(options: { noAudio?: boolean } = {}): Promise<unknown[]> {
+  private async probeVideo(): Promise<unknown[]> {
     const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
     const results: unknown[] = [];
 
@@ -213,11 +216,8 @@ export default class ScryptedApp extends Homey.App {
         const remoteOption = (streamOptions ?? []).find((o: any) => o.destinations?.includes('remote'));
         entry.remoteStreamId = remoteOption?.id;
 
-        const request: Record<string, unknown> = remoteOption?.id
-          ? { id: remoteOption.id }
-          : { destination: 'remote' };
-        if (options.noAudio) request.audio = null;
-        const media = await device.getVideoStream(request);
+        const media = await device.getVideoStream(
+          remoteOption?.id ? { id: remoteOption.id } : { destination: 'remote' });
         const streamUrl = await mediaManager.convertMediaObjectToJSON<{ url?: string; container?: string }>(
           media,
           'text/x-media-url',
