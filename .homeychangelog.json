@@ -8,5 +8,10 @@
     "en": "Fixes cameras that played at home but not away: the app now requests the stream your camera intends for remote viewing, instead of the one meant for local use. Each camera gains a Video stream setting to choose it yourself.",
     "fr": "Corrige les caméras qui se lisaient chez vous mais pas à l'extérieur : l'app demande désormais le flux que votre caméra destine à l'accès distant, et non celui prévu pour l'usage local. Chaque caméra reçoit un réglage Flux vidéo pour le choisir vous-même.",
     "nl": "Lost camera's op die thuis wel werkten maar onderweg niet: de app vraagt nu de stream op die je camera voor gebruik op afstand bedoelt, in plaats van die voor lokaal gebruik. Elke camera krijgt een instelling Videostream om die zelf te kiezen."
+  },
+  "1.0.2": {
+    "en": "Support now points at the community forum instead of an email address.",
+    "fr": "L’assistance renvoie désormais vers le forum communautaire plutôt que vers une adresse e-mail.",
+    "nl": "Ondersteuning verwijst nu naar het communityforum in plaats van een e-mailadres."
   }
 }
