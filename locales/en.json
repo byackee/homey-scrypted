@@ -24,6 +24,7 @@
     "save": "Save",
     "connected": "Connected to Scrypted {{version}}",
     "disconnected": "Not connected",
-    "saved": "Saved and reconnected."
+    "saved": "Saved and reconnected.",
+    "password_unchanged": "Leave blank to keep the stored password."
   }
 }

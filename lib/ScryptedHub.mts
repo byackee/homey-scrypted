@@ -9,12 +9,22 @@ const PLUGIN_ID = '@scrypted/core';
 
 const RECONNECT_MIN_MS = 5_000;
 const RECONNECT_MAX_MS = 5 * 60_000;
+const CONNECT_TIMEOUT_MS = 60_000;
+
+/**
+ * Marks an attempt the hub abandoned on purpose. It reports, but arms no retry: whatever
+ * superseded it has already started one, and a genuine failure must not be conflated with
+ * a deliberate handover.
+ */
+class SupersededError extends Error {}
 
 type Logger = (...args: unknown[]) => void;
 
 export interface ScryptedHubOptions {
   log?: Logger;
   error?: Logger;
+  /** The connect call, overridable so the reconnect logic can be tested without a server. */
+  connect?: typeof connectScryptedClient;
 }
 
 /**
@@ -36,15 +46,23 @@ export class ScryptedHub extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectDelay = RECONNECT_MIN_MS;
   private stopped = false;
+  /**
+   * Bumped whenever the hub abandons what it was doing — a new configuration, or shutdown.
+   * An attempt captures it at the start and gives up its result if it no longer matches,
+   * so a handshake that outlives the config it was made for cannot install itself.
+   */
+  private epoch = 0;
 
   private readonly log: Logger;
   private readonly logError: Logger;
+  private readonly connect: typeof connectScryptedClient;
 
   constructor(options: ScryptedHubOptions = {}) {
     super();
     this.setMaxListeners(0);
     this.log = options.log ?? (() => undefined);
     this.logError = options.error ?? (() => undefined);
+    this.connect = options.connect ?? connectScryptedClient;
   }
 
   get isConnected(): boolean {
@@ -76,27 +94,124 @@ export class ScryptedHub extends EventEmitter {
     const config = this.config;
     if (!config) throw new Error('Scrypted is not configured.');
 
-    this.connecting = this.doConnect(config)
-      .finally(() => { this.connecting = null; });
+    const epoch = this.epoch;
+    const attempt = this.doConnect(config, epoch)
+      .catch(err => {
+        // A failed attempt has to arm its own retry. `handleClose` only fires for a socket
+        // that actually opened, so without this an attempt that never got that far — the
+        // server still starting, the Mac asleep, the host briefly unreachable — leaves no
+        // path back, and every device stays unavailable until the app is restarted.
+        // An attempt the hub abandoned is exempt: its replacement is already under way.
+        if (!(err instanceof SupersededError)) this.scheduleReconnect();
+        throw err;
+      })
+      .finally(() => {
+        // Only while it is still the current attempt: a superseded one clearing the slot
+        // would let a second attempt start alongside the one that replaced it.
+        if (this.epoch === epoch) this.connecting = null;
+      });
 
-    return this.connecting;
+    this.connecting = attempt;
+    return attempt;
   }
 
-  private async doConnect(config: ScryptedConfig): Promise<ScryptedClientStatic> {
+  /**
+   * Connects, but never waits forever.
+   *
+   * The handshake has no deadline of its own — it waits on the socket opening, and engine.io
+   * only starts its heartbeats once that has happened. A half-open TCP, which is what a
+   * machine going to sleep mid-connect leaves behind, therefore never resolves and never
+   * rejects. The hub would sit on that promise indefinitely, hand it to every later caller,
+   * and arm no retry, because nothing ever failed.
+   */
+  private async connectWithDeadline(
+    config: ScryptedConfig,
+    baseUrl: string,
+    clientName: string,
+  ): Promise<ScryptedClientStatic> {
+    let abandoned = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    const attempt = this.connect({
+      baseUrl,
+      pluginId: PLUGIN_ID,
+      username: config.username,
+      password: config.password,
+      clientName,
+    });
+
+    // A client that arrives after the deadline still holds an authenticated session, so it
+    // is closed rather than dropped on the floor.
+    void attempt.then(
+      late => {
+        if (abandoned) {
+          try {
+            late.disconnect();
+          } catch {
+            // Already gone is the state we want.
+          }
+        }
+      },
+      () => undefined,
+    );
+
+    try {
+      return await Promise.race([
+        attempt,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abandoned = true;
+            reject(new Error(`Connecting to Scrypted timed out after ${CONNECT_TIMEOUT_MS / 1000}s.`));
+          }, CONNECT_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private async doConnect(config: ScryptedConfig, epoch: number): Promise<ScryptedClientStatic> {
     const baseUrl = `https://${config.host}:${config.port}`;
     this.log(`Connecting to Scrypted at ${baseUrl}`);
 
     // The client sets rejectUnauthorized: false internally, so Scrypted's self-signed
     // certificate is accepted without weakening TLS for the rest of the app.
-    const client = await connectScryptedClient({
-      baseUrl,
-      pluginId: PLUGIN_ID,
-      username: config.username,
-      password: config.password,
-      clientName: 'Homey',
-    });
+    const client = await this.connectWithDeadline(config, baseUrl, 'Homey');
 
-    client.onClose = () => this.handleClose();
+    let peerDead = false;
+    // Identity-checked, because both paths below can fire long after this client was
+    // replaced, and neither may take down its successor.
+    const handleDeath = (): void => {
+      peerDead = true;
+      if (this.client === client) this.handleClose();
+    };
+    client.onClose = handleDeath;
+    // The client wires its own close handler onto the peer before it hands the client back,
+    // so a socket that died during the handshake already called `onClose` while it was still
+    // unset — and that close is lost. The peer's killed promise stays settled, so asking it
+    // here catches the case the callback missed; otherwise the hub holds a dead client,
+    // reports itself connected, and never reconnects.
+    client.rpcPeer?.killedSafe?.then(handleDeath);
+
+    // One turn of the loop, so a peer that is already dead has said so before this client is
+    // adopted. Without it the hub announces a connection it retracts a tick later, and every
+    // device runs a full sync against a proxy that is already gone.
+    await new Promise(resolve => setImmediate(resolve));
+
+    const discard = (reason: string, superseded: boolean): never => {
+      try {
+        client.disconnect();
+      } catch {
+        // Nothing to close is the outcome we want.
+      }
+      throw superseded ? new SupersededError(reason) : new Error(reason);
+    };
+
+    // The hub moved on while this handshake was in flight — repaired onto another server, or
+    // unloaded. Adopting this socket would bind the hub to the configuration it just left.
+    if (this.epoch !== epoch) discard('Connection attempt superseded.', true);
+    if (peerDead) discard('The Scrypted connection closed during the handshake.', false);
 
     this.client = client;
     this.reconnectDelay = RECONNECT_MIN_MS;
@@ -122,10 +237,8 @@ export class ScryptedHub extends EventEmitter {
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.getClient().catch(err => {
-        this.logError('Reconnect failed:', (err as Error).message);
-        this.scheduleReconnect();
-      });
+      // `getClient` arms the next attempt itself when this one fails, so this only reports.
+      this.getClient().catch(err => this.logError('Reconnect failed:', (err as Error).message));
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -137,6 +250,10 @@ export class ScryptedHub extends EventEmitter {
       this.reconnectTimer = null;
     }
     this.reconnectDelay = RECONNECT_MIN_MS;
+    // Whatever is in flight was built from the previous configuration. Abandoning it here
+    // stops this call being answered by a connection to the server we just moved off.
+    this.epoch += 1;
+    this.connecting = null;
 
     const previous = this.client;
     this.client = null;
@@ -151,13 +268,11 @@ export class ScryptedHub extends EventEmitter {
 
   /** Verifies credentials without disturbing the live connection. Used during pairing. */
   async probe(config: ScryptedConfig): Promise<{ version?: string; deviceCount: number }> {
-    const client = await connectScryptedClient({
-      baseUrl: `https://${config.host}:${config.port}`,
-      pluginId: PLUGIN_ID,
-      username: config.username,
-      password: config.password,
-      clientName: 'Homey (pairing)',
-    });
+    const client = await this.connectWithDeadline(
+      config,
+      `https://${config.host}:${config.port}`,
+      'Homey (pairing)',
+    );
     try {
       return {
         version: client.serverVersion,
@@ -213,6 +328,10 @@ export class ScryptedHub extends EventEmitter {
   /** Stops reconnecting and closes the socket. Called when the Homey app unloads. */
   destroy(): void {
     this.stopped = true;
+    // An attempt still in flight would otherwise finish onto a destroyed hub, leaving an
+    // authenticated session open and `isConnected` true after the app unloaded.
+    this.epoch += 1;
+    this.connecting = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

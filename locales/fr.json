@@ -24,6 +24,7 @@
     "save": "Enregistrer",
     "connected": "Connecté à Scrypted {{version}}",
     "disconnected": "Non connecté",
-    "saved": "Enregistré et reconnecté."
+    "saved": "Enregistré et reconnecté.",
+    "password_unchanged": "Laissez vide pour conserver le mot de passe enregistré."
   }
 }

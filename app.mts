@@ -70,6 +70,27 @@ export default class ScryptedApp extends Homey.App {
     await this.hub.setConfig(config);
   }
 
+  /**
+   * Applies a configuration change from the settings page.
+   *
+   * The page cannot read the stored password back, so it leaves that field empty and posts
+   * an empty string whenever the user did not retype it. Taking that literally wiped the
+   * password of anyone who opened settings only to correct a host or a port, which broke
+   * the connection they had come to fix. An empty password therefore means unchanged.
+   */
+  async updateConfig(update: Omit<ScryptedConfig, 'password'> & { password?: string }): Promise<void> {
+    const stored = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;
+    const password = update.password || stored?.password;
+    if (!password) throw new Error('A password is required.');
+
+    await this.saveConfig({
+      host: update.host,
+      port: update.port,
+      username: update.username,
+      password,
+    });
+  }
+
   /** Reads the stored configuration without the password, for the settings page. */
   getPublicConfig(): Omit<ScryptedConfig, 'password'> | null {
     const config = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;

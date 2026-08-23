@@ -24,6 +24,7 @@
     "save": "Opslaan",
     "connected": "Verbonden met Scrypted {{version}}",
     "disconnected": "Niet verbonden",
-    "saved": "Opgeslagen en opnieuw verbonden."
+    "saved": "Opgeslagen en opnieuw verbonden.",
+    "password_unchanged": "Laat leeg om het opgeslagen wachtwoord te behouden."
   }
 }

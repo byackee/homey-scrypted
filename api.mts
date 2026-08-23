@@ -28,10 +28,11 @@ export default {
 
   async setConfig({ homey, body }: Request) {
     const app = homey.app as ScryptedApp;
-    await app.saveConfig({
+    await app.updateConfig({
       host: String(body.host ?? '').trim(),
       port: Number(body.port ?? 10443),
       username: String(body.username ?? '').trim(),
+      // Empty means the user did not retype it; `updateConfig` keeps the stored one.
       password: String(body.password ?? ''),
     });
     return app.getStatus();
