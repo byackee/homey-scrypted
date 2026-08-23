@@ -15,6 +15,8 @@ type Logger = (...args: unknown[]) => void;
 export interface ScryptedHubOptions {
   log?: Logger;
   error?: Logger;
+  /** The connect call, overridable so the reconnect logic can be tested without a server. */
+  connect?: typeof connectScryptedClient;
 }
 
 /**
@@ -39,12 +41,14 @@ export class ScryptedHub extends EventEmitter {
 
   private readonly log: Logger;
   private readonly logError: Logger;
+  private readonly connect: typeof connectScryptedClient;
 
   constructor(options: ScryptedHubOptions = {}) {
     super();
     this.setMaxListeners(0);
     this.log = options.log ?? (() => undefined);
     this.logError = options.error ?? (() => undefined);
+    this.connect = options.connect ?? connectScryptedClient;
   }
 
   get isConnected(): boolean {
@@ -77,6 +81,14 @@ export class ScryptedHub extends EventEmitter {
     if (!config) throw new Error('Scrypted is not configured.');
 
     this.connecting = this.doConnect(config)
+      .catch(err => {
+        // A failed attempt has to arm its own retry. `handleClose` only fires for a socket
+        // that actually opened, so without this an attempt that never got that far — the
+        // server still starting, the Mac asleep, the host briefly unreachable — leaves no
+        // path back, and every device stays unavailable until the app is restarted.
+        this.scheduleReconnect();
+        throw err;
+      })
       .finally(() => { this.connecting = null; });
 
     return this.connecting;
@@ -88,7 +100,7 @@ export class ScryptedHub extends EventEmitter {
 
     // The client sets rejectUnauthorized: false internally, so Scrypted's self-signed
     // certificate is accepted without weakening TLS for the rest of the app.
-    const client = await connectScryptedClient({
+    const client = await this.connect({
       baseUrl,
       pluginId: PLUGIN_ID,
       username: config.username,
@@ -122,10 +134,8 @@ export class ScryptedHub extends EventEmitter {
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.getClient().catch(err => {
-        this.logError('Reconnect failed:', (err as Error).message);
-        this.scheduleReconnect();
-      });
+      // `getClient` arms the next attempt itself when this one fails, so this only reports.
+      this.getClient().catch(err => this.logError('Reconnect failed:', (err as Error).message));
     }, delay);
     this.reconnectTimer.unref?.();
   }
@@ -151,7 +161,7 @@ export class ScryptedHub extends EventEmitter {
 
   /** Verifies credentials without disturbing the live connection. Used during pairing. */
   async probe(config: ScryptedConfig): Promise<{ version?: string; deviceCount: number }> {
-    const client = await connectScryptedClient({
+    const client = await this.connect({
       baseUrl: `https://${config.host}:${config.port}`,
       pluginId: PLUGIN_ID,
       username: config.username,
