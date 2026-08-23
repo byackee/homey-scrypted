@@ -41,6 +41,10 @@ export class BaseScryptedDevice extends Homey.Device {
   private readonly wiredCapabilities = new Set<string>();
   private syncRetryTimer: NodeJS.Timeout | null = null;
   private syncRetryDelay = SYNC_RETRY_MIN_MS;
+  /** Set once the device is gone, so nothing armed before that can outlive it. */
+  private destroyed = false;
+  /** Identifies the newest sync, so a slower one cannot undo the work of a newer one. */
+  private syncSeq = 0;
   private onHubConnected = (): void => { void this.sync(); };
   private onHubDisconnected = (): void => { void this.handleHubDisconnected(); };
 
@@ -82,6 +86,9 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   private teardown(): void {
+    // Before cancelling, so a sync already in flight cannot re-arm behind this call: the
+    // timer it would leave running has nothing left to cancel it.
+    this.destroyed = true;
     this.hub.off('connected', this.onHubConnected);
     this.hub.off('disconnected', this.onHubDisconnected);
     this.cancelSyncRetry();
@@ -109,7 +116,7 @@ export class BaseScryptedDevice extends Homey.Device {
    * would only add a second retry loop on top of the hub's own.
    */
   private scheduleSyncRetry(): void {
-    if (this.syncRetryTimer || !this.hub.isConnected) return;
+    if (this.destroyed || this.syncRetryTimer || !this.hub.isConnected) return;
 
     const delay = this.syncRetryDelay;
     this.syncRetryDelay = Math.min(this.syncRetryDelay * 2, SYNC_RETRY_MAX_MS);
@@ -145,8 +152,15 @@ export class BaseScryptedDevice extends Homey.Device {
    * the single entry point used at init, on reconnect, and after a capability change.
    */
   protected async sync(): Promise<void> {
+    if (this.destroyed) return;
+
+    const seq = ++this.syncSeq;
+    /** Whether this sync still speaks for the device, or has been overtaken. */
+    const current = (): boolean => seq === this.syncSeq && !this.destroyed;
+
     try {
       const device = await this.hub.getDevice(this.scryptedId);
+      if (!current()) return;
       if (!device) {
         await this.setUnavailable(this.homey.__('errors.device_missing')).catch(() => undefined);
         // Scrypted can report a device late — a plugin still loading holds none of its
@@ -178,6 +192,11 @@ export class BaseScryptedDevice extends Homey.Device {
       await this.syncCapabilities();
       this.registerWriters();
       await this.seedValues(device);
+
+      // A sync that has been overtaken must stop here: `subscribeToEvents` starts by tearing
+      // down the existing registers, so letting a slow one finish would wipe the newer one's
+      // subscriptions and leave the device available but deaf until the next reconnect.
+      if (!current()) return;
       this.subscribeToEvents(device, facts.interfaces);
       await this.onScryptedSynced(device, facts.interfaces);
 

@@ -174,10 +174,11 @@ test('a client that was already dead when handed over is not held as connected',
     // The client wires its own close handler before returning it, so a socket that dropped
     // during the handshake fires onClose while the hub has not set it yet. That close used
     // to be lost, leaving the hub reporting a connection it did not have.
-    await hub.setConfig(CONFIG);
+    await assert.rejects(hub.setConfig(CONFIG), /closed during the handshake/);
     await flush();
 
     assert.equal(hub.isConnected, false, 'held a dead client as the live connection');
+    assert.equal(dead.disconnected, true, 'the dead socket was left open');
 
     mock.timers.tick(5_000);
     await flush();
@@ -294,14 +295,240 @@ test('a failed pairing probe arms no reconnect', async () => {
       connect: async () => { attempts += 1; throw new Error('bad credentials'); },
     });
 
+    // A configured hub, or `scheduleReconnect` would decline for want of a config and this
+    // would pass whatever probe did. Repair — where a probe meets a configured hub — is
+    // exactly the case worth pinning.
+    await assert.rejects(hub.setConfig(CONFIG), /bad credentials/);
+    hub.destroy();
+    attempts = 0;
+
+    const probeOnly = new ScryptedHub({
+      connect: async () => { attempts += 1; throw new Error('bad credentials'); },
+    });
+    await assert.rejects(probeOnly.setConfig(CONFIG), /bad credentials/);
+    probeOnly.destroy();
+
+    const configured = new ScryptedHub({
+      connect: async () => { attempts += 1; throw new Error('bad credentials'); },
+    });
+    await assert.rejects(configured.setConfig(CONFIG), /bad credentials/);
+    attempts = 0;
+
     // A probe validates what the user typed. It must not put the hub into a retry loop,
     // which is what keeps rejected credentials from being replayed every few minutes.
-    await assert.rejects(hub.probe(CONFIG), /bad credentials/);
+    await assert.rejects(configured.probe(CONFIG), /bad credentials/);
     assert.equal(attempts, 1);
+    const hubUnderTest = configured;
 
-    mock.timers.tick(5 * 60_000);
+    // Long enough for the hub's own backoff to have fired several times had the probe armed
+    // one; the hub's pre-existing loop is discounted by resetting the counter above.
+    mock.timers.tick(4_000);
     await flush();
     assert.equal(attempts, 1, 'a rejected probe started retrying on its own');
+
+    hubUnderTest.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a stale attempt that succeeds after a repair is discarded, not adopted', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const stale = fakeClient();
+    const fresh = fakeClient();
+    const stall = deferred();
+    const handed: unknown[] = [];
+
+    const hub = new ScryptedHub({
+      connect: async () => {
+        // The first attempt hangs past the repair, then succeeds anyway — a slow handshake
+        // to a server the user has already moved off.
+        if (handed.length === 0) {
+          handed.push(stale);
+          await stall.promise;
+          return stale as never;
+        }
+        handed.push(fresh);
+        return fresh as never;
+      },
+    });
+
+    const stalled = hub.setConfig(CONFIG).catch(() => undefined);
+    await flush();
+
+    await hub.setConfig({ ...CONFIG, host: '192.168.50.73' });
+    await flush();
+    assert.equal(hub.isConnected, true);
+
+    // Now let the abandoned handshake land. Adopting it would bind the hub to the server it
+    // was repaired away from, and leave both sockets open.
+    stall.release();
+    await stalled;
+    await flush();
+
+    assert.equal(hub.isConnected, true, 'the stale attempt replaced the live connection');
+    assert.equal(stale.disconnected, true, 'the abandoned socket was left open');
+    assert.equal(fresh.disconnected, false, 'the live socket was closed');
+
+    hub.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('an abandoned attempt does not consume a backoff step', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const stale = fakeClient();
+    const stall = deferred();
+    let attempts = 0;
+
+    const hub = new ScryptedHub({
+      connect: async () => {
+        attempts += 1;
+        if (attempts === 1) { await stall.promise; return stale as never; }
+        throw new Error('connect ECONNREFUSED');
+      },
+    });
+
+    const stalled = hub.setConfig(CONFIG).catch(() => undefined);
+    await flush();
+
+    // Repair onto a server that is down: the fresh attempt fails and arms the first retry.
+    await assert.rejects(hub.setConfig({ ...CONFIG, host: '192.168.50.73' }), /ECONNREFUSED/);
+    await flush();
+    assert.equal(attempts, 2);
+
+    // The abandoned attempt lands. It must not arm a retry of its own, or the backoff moves
+    // on without a failure behind it.
+    stall.release();
+    await stalled;
+    await flush();
+
+    mock.timers.tick(5_000);
+    await flush();
+    assert.equal(attempts, 3, 'the retry did not fire at the minimum delay');
+
+    hub.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a handshake that never settles is given up on rather than waited out', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const stall = deferred();
+    let attempts = 0;
+    const hub = new ScryptedHub({
+      connect: async () => { attempts += 1; await stall.promise; return fakeClient() as never; },
+    });
+
+    // A half-open TCP — what a machine going to sleep mid-connect leaves behind — neither
+    // resolves nor rejects. Waiting on it wedges the hub: no client, no failure, so no retry
+    // is ever armed and every later caller joins the same promise that never answers.
+    const stalled = hub.setConfig(CONFIG).catch(() => undefined);
+    await flush();
+    assert.equal(attempts, 1);
+
+    mock.timers.tick(60_000);
+    await flush();
+    mock.timers.tick(5_000);
+    await flush();
+
+    assert.equal(attempts, 2, 'a handshake that never settles was waited on forever');
+
+    stall.release();
+    await stalled;
+    hub.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('an abandoned attempt does not release the slot its successor owns', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const stale = fakeClient();
+    const live = fakeClient();
+    const staleStall = deferred();
+    const liveStall = deferred();
+    let attempts = 0;
+
+    const hub = new ScryptedHub({
+      connect: async () => {
+        attempts += 1;
+        if (attempts === 1) { await staleStall.promise; return stale as never; }
+        if (attempts === 2) { await liveStall.promise; return live as never; }
+        return fakeClient() as never;
+      },
+    });
+
+    const stalled = hub.setConfig(CONFIG).catch(() => undefined);
+    await flush();
+    // Not awaited: the replacement hangs too, which is what leaves a slot to be released.
+    const repairing = hub.setConfig({ ...CONFIG, host: '192.168.50.73' }).catch(() => undefined);
+    await flush();
+    assert.equal(attempts, 2);
+
+    // The abandoned attempt finishes. Clearing the slot here would let the next caller open
+    // a third socket alongside the one already in flight, and one of the two would leak.
+    staleStall.release();
+    await stalled;
+    await flush();
+
+    const joined = hub.getClient().catch(() => undefined);
+    await flush();
+    assert.equal(attempts, 2, 'a third connection was opened alongside the one in flight');
+
+    liveStall.release();
+    await Promise.all([repairing, joined]);
+    hub.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('an abandoned attempt does not arm a reconnect against a healthy connection', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const stale = fakeClient();
+    const live = fakeClient();
+    const stall = deferred();
+    let attempts = 0;
+
+    const hub = new ScryptedHub({
+      connect: async () => {
+        attempts += 1;
+        if (attempts === 1) { await stall.promise; return stale as never; }
+        return (attempts === 2 ? live : fakeClient()) as never;
+      },
+    });
+
+    const stalled = hub.setConfig(CONFIG).catch(() => undefined);
+    await flush();
+    await hub.setConfig({ ...CONFIG, host: '192.168.50.73' });
+    await flush();
+    assert.equal(hub.isConnected, true);
+
+    // The abandoned attempt lands onto a hub that is already connected. Treating that as a
+    // failure would arm a retry behind a healthy socket and step the backoff forward with no
+    // failure behind it — so the next real outage would wait twice as long as it should.
+    stall.release();
+    await stalled;
+    await flush();
+    mock.timers.tick(5_000);
+    await flush();
+
+    live.killPeer();
+    live.onClose?.();
+    await flush();
+    assert.equal(hub.isConnected, false);
+
+    mock.timers.tick(5_000);
+    await flush();
+    assert.equal(attempts, 3, 'the backoff had been stepped on by an abandoned attempt');
 
     hub.destroy();
   } finally {

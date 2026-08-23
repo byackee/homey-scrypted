@@ -9,6 +9,14 @@ const PLUGIN_ID = '@scrypted/core';
 
 const RECONNECT_MIN_MS = 5_000;
 const RECONNECT_MAX_MS = 5 * 60_000;
+const CONNECT_TIMEOUT_MS = 60_000;
+
+/**
+ * Marks an attempt the hub abandoned on purpose. It reports, but arms no retry: whatever
+ * superseded it has already started one, and a genuine failure must not be conflated with
+ * a deliberate handover.
+ */
+class SupersededError extends Error {}
 
 type Logger = (...args: unknown[]) => void;
 
@@ -93,7 +101,8 @@ export class ScryptedHub extends EventEmitter {
         // that actually opened, so without this an attempt that never got that far — the
         // server still starting, the Mac asleep, the host briefly unreachable — leaves no
         // path back, and every device stays unavailable until the app is restarted.
-        this.scheduleReconnect();
+        // An attempt the hub abandoned is exempt: its replacement is already under way.
+        if (!(err instanceof SupersededError)) this.scheduleReconnect();
         throw err;
       })
       .finally(() => {
@@ -106,35 +115,75 @@ export class ScryptedHub extends EventEmitter {
     return attempt;
   }
 
+  /**
+   * Connects, but never waits forever.
+   *
+   * The handshake has no deadline of its own — it waits on the socket opening, and engine.io
+   * only starts its heartbeats once that has happened. A half-open TCP, which is what a
+   * machine going to sleep mid-connect leaves behind, therefore never resolves and never
+   * rejects. The hub would sit on that promise indefinitely, hand it to every later caller,
+   * and arm no retry, because nothing ever failed.
+   */
+  private async connectWithDeadline(
+    config: ScryptedConfig,
+    baseUrl: string,
+    clientName: string,
+  ): Promise<ScryptedClientStatic> {
+    let abandoned = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    const attempt = this.connect({
+      baseUrl,
+      pluginId: PLUGIN_ID,
+      username: config.username,
+      password: config.password,
+      clientName,
+    });
+
+    // A client that arrives after the deadline still holds an authenticated session, so it
+    // is closed rather than dropped on the floor.
+    void attempt.then(
+      late => {
+        if (abandoned) {
+          try {
+            late.disconnect();
+          } catch {
+            // Already gone is the state we want.
+          }
+        }
+      },
+      () => undefined,
+    );
+
+    try {
+      return await Promise.race([
+        attempt,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abandoned = true;
+            reject(new Error(`Connecting to Scrypted timed out after ${CONNECT_TIMEOUT_MS / 1000}s.`));
+          }, CONNECT_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   private async doConnect(config: ScryptedConfig, epoch: number): Promise<ScryptedClientStatic> {
     const baseUrl = `https://${config.host}:${config.port}`;
     this.log(`Connecting to Scrypted at ${baseUrl}`);
 
     // The client sets rejectUnauthorized: false internally, so Scrypted's self-signed
     // certificate is accepted without weakening TLS for the rest of the app.
-    const client = await this.connect({
-      baseUrl,
-      pluginId: PLUGIN_ID,
-      username: config.username,
-      password: config.password,
-      clientName: 'Homey',
-    });
+    const client = await this.connectWithDeadline(config, baseUrl, 'Homey');
 
-    if (this.epoch !== epoch) {
-      // The hub moved on while this handshake was in flight — repaired onto another server,
-      // or unloaded. Adopting this socket would bind the hub to the configuration it just
-      // left, so close it and let the current attempt stand.
-      try {
-        client.disconnect();
-      } catch {
-        // Nothing to close is the outcome we want.
-      }
-      throw new Error('Connection attempt superseded.');
-    }
-
+    let peerDead = false;
     // Identity-checked, because both paths below can fire long after this client was
     // replaced, and neither may take down its successor.
     const handleDeath = (): void => {
+      peerDead = true;
       if (this.client === client) this.handleClose();
     };
     client.onClose = handleDeath;
@@ -144,6 +193,25 @@ export class ScryptedHub extends EventEmitter {
     // here catches the case the callback missed; otherwise the hub holds a dead client,
     // reports itself connected, and never reconnects.
     client.rpcPeer?.killedSafe?.then(handleDeath);
+
+    // One turn of the loop, so a peer that is already dead has said so before this client is
+    // adopted. Without it the hub announces a connection it retracts a tick later, and every
+    // device runs a full sync against a proxy that is already gone.
+    await new Promise(resolve => setImmediate(resolve));
+
+    const discard = (reason: string, superseded: boolean): never => {
+      try {
+        client.disconnect();
+      } catch {
+        // Nothing to close is the outcome we want.
+      }
+      throw superseded ? new SupersededError(reason) : new Error(reason);
+    };
+
+    // The hub moved on while this handshake was in flight — repaired onto another server, or
+    // unloaded. Adopting this socket would bind the hub to the configuration it just left.
+    if (this.epoch !== epoch) discard('Connection attempt superseded.', true);
+    if (peerDead) discard('The Scrypted connection closed during the handshake.', false);
 
     this.client = client;
     this.reconnectDelay = RECONNECT_MIN_MS;
@@ -200,13 +268,11 @@ export class ScryptedHub extends EventEmitter {
 
   /** Verifies credentials without disturbing the live connection. Used during pairing. */
   async probe(config: ScryptedConfig): Promise<{ version?: string; deviceCount: number }> {
-    const client = await this.connect({
-      baseUrl: `https://${config.host}:${config.port}`,
-      pluginId: PLUGIN_ID,
-      username: config.username,
-      password: config.password,
-      clientName: 'Homey (pairing)',
-    });
+    const client = await this.connectWithDeadline(
+      config,
+      `https://${config.host}:${config.port}`,
+      'Homey (pairing)',
+    );
     try {
       return {
         version: client.serverVersion,
