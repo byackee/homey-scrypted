@@ -47,10 +47,9 @@
     "xlarge": "/assets/images/xlarge.png"
   },
   "author": {
-    "name": "DataWeave Labs",
-    "email": "admin@dataweavelabs.com"
+    "name": "DataWeave Labs"
   },
-  "support": "mailto:admin@dataweavelabs.com",
+  "support": "https://community.homey.app/t/app-pro-scrypted-live-video-snapshots-and-object-detection-from-your-cameras/158530",
   "api": {
     "getStatus": {
       "method": "GET",
@@ -64,6 +63,11 @@
       "method": "GET",
       "path": "/diagnostics"
     }
+  },
+  "homeyCommunityTopicId": 158530,
+  "source": "https://github.com/byackee/homey-scrypted",
+  "bugs": {
+    "url": "https://github.com/byackee/homey-scrypted/issues"
   },
   "esm": true,
   "flow": {
