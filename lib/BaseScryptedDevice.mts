@@ -6,6 +6,9 @@ import { homeyClassFor } from './deviceTypeMap.mjs';
 import type { ScryptedHub } from './ScryptedHub.mjs';
 import type { AnyScryptedDevice } from './types.mjs';
 
+const SYNC_RETRY_MIN_MS = 10_000;
+const SYNC_RETRY_MAX_MS = 5 * 60_000;
+
 /** Shape of the Homey app object this device expects, kept local to avoid a circular import. */
 interface ScryptedAppLike {
   hub: ScryptedHub;
@@ -36,6 +39,8 @@ export class BaseScryptedDevice extends Homey.Device {
   private bindingsByInterface = new Map<string, CapabilityBinding[]>();
   /** Capabilities that already have a Homey listener, which may only be registered once. */
   private readonly wiredCapabilities = new Set<string>();
+  private syncRetryTimer: NodeJS.Timeout | null = null;
+  private syncRetryDelay = SYNC_RETRY_MIN_MS;
   private onHubConnected = (): void => { void this.sync(); };
   private onHubDisconnected = (): void => { void this.handleHubDisconnected(); };
 
@@ -79,8 +84,41 @@ export class BaseScryptedDevice extends Homey.Device {
   private teardown(): void {
     this.hub.off('connected', this.onHubConnected);
     this.hub.off('disconnected', this.onHubDisconnected);
+    this.cancelSyncRetry();
     this.removeEventRegister();
     this.scryptedDevice = null;
+  }
+
+  private cancelSyncRetry(): void {
+    if (this.syncRetryTimer) {
+      this.homey.clearTimeout(this.syncRetryTimer);
+      this.syncRetryTimer = null;
+    }
+    this.syncRetryDelay = SYNC_RETRY_MIN_MS;
+  }
+
+  /**
+   * Arms another `sync()` after a failed one.
+   *
+   * Without this a device that failed to bind stays unavailable until the hub disconnects
+   * and reconnects, which on a healthy connection may simply never happen — one RPC hiccup
+   * against a server still warming up was enough to strand a camera indefinitely while
+   * every other device worked.
+   *
+   * Skipped while the hub is down: the `connected` event already re-syncs, and racing it
+   * would only add a second retry loop on top of the hub's own.
+   */
+  private scheduleSyncRetry(): void {
+    if (this.syncRetryTimer || !this.hub.isConnected) return;
+
+    const delay = this.syncRetryDelay;
+    this.syncRetryDelay = Math.min(this.syncRetryDelay * 2, SYNC_RETRY_MAX_MS);
+    this.trace(`sync retry in ${Math.round(delay / 1000)}s`);
+
+    this.syncRetryTimer = this.homey.setTimeout(() => {
+      this.syncRetryTimer = null;
+      void this.sync();
+    }, delay);
   }
 
   private removeEventRegister(): void {
@@ -95,6 +133,8 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   private async handleHubDisconnected(): Promise<void> {
+    // The reconnect drives a fresh sync, so a pending retry has nothing left to add.
+    this.cancelSyncRetry();
     this.removeEventRegister();
     this.scryptedDevice = null;
     await this.setUnavailable(this.homey.__('errors.not_connected')).catch(() => undefined);
@@ -109,6 +149,9 @@ export class BaseScryptedDevice extends Homey.Device {
       const device = await this.hub.getDevice(this.scryptedId);
       if (!device) {
         await this.setUnavailable(this.homey.__('errors.device_missing')).catch(() => undefined);
+        // Scrypted can report a device late — a plugin still loading holds none of its
+        // devices yet — so this is retried rather than treated as gone for good.
+        this.scheduleSyncRetry();
         return;
       }
 
@@ -143,9 +186,14 @@ export class BaseScryptedDevice extends Homey.Device {
         : true;
       if (online) await this.setAvailable().catch(() => undefined);
       else await this.setUnavailable('Offline in Scrypted').catch(() => undefined);
+
+      // Bound to the device, whatever Scrypted says about it, so the next failure starts
+      // from the short delay again.
+      this.cancelSyncRetry();
     } catch (err) {
       this.error('Sync failed:', (err as Error).message);
       await this.setUnavailable((err as Error).message).catch(() => undefined);
+      this.scheduleSyncRetry();
     }
   }
 

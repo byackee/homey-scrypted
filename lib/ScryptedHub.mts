@@ -38,6 +38,12 @@ export class ScryptedHub extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectDelay = RECONNECT_MIN_MS;
   private stopped = false;
+  /**
+   * Bumped whenever the hub abandons what it was doing — a new configuration, or shutdown.
+   * An attempt captures it at the start and gives up its result if it no longer matches,
+   * so a handshake that outlives the config it was made for cannot install itself.
+   */
+  private epoch = 0;
 
   private readonly log: Logger;
   private readonly logError: Logger;
@@ -80,7 +86,8 @@ export class ScryptedHub extends EventEmitter {
     const config = this.config;
     if (!config) throw new Error('Scrypted is not configured.');
 
-    this.connecting = this.doConnect(config)
+    const epoch = this.epoch;
+    const attempt = this.doConnect(config, epoch)
       .catch(err => {
         // A failed attempt has to arm its own retry. `handleClose` only fires for a socket
         // that actually opened, so without this an attempt that never got that far — the
@@ -89,12 +96,17 @@ export class ScryptedHub extends EventEmitter {
         this.scheduleReconnect();
         throw err;
       })
-      .finally(() => { this.connecting = null; });
+      .finally(() => {
+        // Only while it is still the current attempt: a superseded one clearing the slot
+        // would let a second attempt start alongside the one that replaced it.
+        if (this.epoch === epoch) this.connecting = null;
+      });
 
-    return this.connecting;
+    this.connecting = attempt;
+    return attempt;
   }
 
-  private async doConnect(config: ScryptedConfig): Promise<ScryptedClientStatic> {
+  private async doConnect(config: ScryptedConfig, epoch: number): Promise<ScryptedClientStatic> {
     const baseUrl = `https://${config.host}:${config.port}`;
     this.log(`Connecting to Scrypted at ${baseUrl}`);
 
@@ -108,7 +120,30 @@ export class ScryptedHub extends EventEmitter {
       clientName: 'Homey',
     });
 
-    client.onClose = () => this.handleClose();
+    if (this.epoch !== epoch) {
+      // The hub moved on while this handshake was in flight — repaired onto another server,
+      // or unloaded. Adopting this socket would bind the hub to the configuration it just
+      // left, so close it and let the current attempt stand.
+      try {
+        client.disconnect();
+      } catch {
+        // Nothing to close is the outcome we want.
+      }
+      throw new Error('Connection attempt superseded.');
+    }
+
+    // Identity-checked, because both paths below can fire long after this client was
+    // replaced, and neither may take down its successor.
+    const handleDeath = (): void => {
+      if (this.client === client) this.handleClose();
+    };
+    client.onClose = handleDeath;
+    // The client wires its own close handler onto the peer before it hands the client back,
+    // so a socket that died during the handshake already called `onClose` while it was still
+    // unset — and that close is lost. The peer's killed promise stays settled, so asking it
+    // here catches the case the callback missed; otherwise the hub holds a dead client,
+    // reports itself connected, and never reconnects.
+    client.rpcPeer?.killedSafe?.then(handleDeath);
 
     this.client = client;
     this.reconnectDelay = RECONNECT_MIN_MS;
@@ -147,6 +182,10 @@ export class ScryptedHub extends EventEmitter {
       this.reconnectTimer = null;
     }
     this.reconnectDelay = RECONNECT_MIN_MS;
+    // Whatever is in flight was built from the previous configuration. Abandoning it here
+    // stops this call being answered by a connection to the server we just moved off.
+    this.epoch += 1;
+    this.connecting = null;
 
     const previous = this.client;
     this.client = null;
@@ -223,6 +262,10 @@ export class ScryptedHub extends EventEmitter {
   /** Stops reconnecting and closes the socket. Called when the Homey app unloads. */
   destroy(): void {
     this.stopped = true;
+    // An attempt still in flight would otherwise finish onto a destroyed hub, leaving an
+    // authenticated session open and `isConnected` true after the app unloaded.
+    this.epoch += 1;
+    this.connecting = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
