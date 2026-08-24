@@ -2,16 +2,20 @@
   <!--
     The Scrypted mark, drawn as line art on the full canvas.
 
+    Stroke is 40, the weight Homey uses on 248 of the paths in its own device icon set;
+    nothing there comes near the 76 this carried before, which closed the inner square
+    into a blob at the size the app list renders.
+
     Guideline 1.5 requires a vector icon with a transparent background and no fill,
     gradient or background colour, so the purple disc of the original logo is deliberately
     absent: a filled illustration renders as a solid blob at small sizes and is rejected.
   -->
-  <g fill="none" stroke="#000" stroke-width="76" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="218" y="218" width="524" height="524" rx="64" />
-    <rect x="392" y="392" width="176" height="176" rx="24" />
-    <path d="M392 104v114M568 104v114" />
-    <path d="M392 742v114M568 742v114" />
-    <path d="M104 392h114M104 568h114" />
-    <path d="M742 392h114M742 568h114" />
+  <g fill="none" stroke="#000" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="180.4" y="180.4" width="599.2" height="599.2" rx="73.2" />
+    <rect x="379.4" y="379.4" width="201.3" height="201.3" rx="27.4" />
+    <path d="M379.4 50v130.4M580.6 50v130.4" />
+    <path d="M379.4 779.6v130.4M580.6 779.6v130.4" />
+    <path d="M50 379.4h130.4M50 580.6h130.4" />
+    <path d="M779.6 379.4h130.4M779.6 580.6h130.4" />
   </g>
 </svg>

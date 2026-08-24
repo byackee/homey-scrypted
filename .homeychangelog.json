@@ -38,5 +38,10 @@
     "en": "Fixes the app crashing when a camera reports an unusual detection type, and cameras losing their detection history when the server was slow to start. Detection alarms no longer refresh needlessly while someone stays in view. The French Flow card for detections said the opposite of what it meant, and several messages appeared in English.",
     "fr": "Corrige un plantage de l'app quand une caméra signale un type de détection inhabituel, et la perte de l'historique de détection des caméras quand le serveur démarrait lentement. Les alarmes de détection ne se rafraîchissent plus inutilement tant qu'une personne reste dans le champ. La carte de Flow française des détections disait le contraire de ce qu'elle signifiait, et plusieurs messages s'affichaient en anglais.",
     "nl": "Lost een crash op wanneer een camera een ongebruikelijk detectietype meldt, en het verlies van de detectiegeschiedenis wanneer de server traag opstartte. Detectiealarmen vernieuwen niet meer onnodig zolang iemand in beeld blijft. De Franse Flow-kaart voor detecties zei het tegenovergestelde van wat ze bedoelde, en meerdere meldingen verschenen in het Engels."
+  },
+  "1.0.8": {
+    "en": "The app and camera icons are redrawn so they render at the right weight and size everywhere Homey shows them, instead of turning into a dark blob at small sizes.",
+    "fr": "Les icônes de l'app et de la caméra sont redessinées pour s'afficher à la bonne épaisseur et à la bonne taille partout où Homey les montre, au lieu de devenir une tache sombre en petit format.",
+    "nl": "De pictogrammen van de app en de camera zijn opnieuw getekend zodat ze overal waar Homey ze toont in de juiste dikte en grootte verschijnen, in plaats van een donkere vlek te worden op klein formaat."
   }
 }
