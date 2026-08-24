@@ -1,6 +1,6 @@
 {
   "id": "com.dataweavelabs.scrypted",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "compatibility": ">=12.7.0",
   "sdk": 3,
   "platforms": [

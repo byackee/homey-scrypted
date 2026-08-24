@@ -6,7 +6,11 @@ import type {
   ObjectsDetected,
 } from '@scrypted/types';
 import { BaseScryptedDevice } from '../../lib/BaseScryptedDevice.mjs';
-import { detectionGroupFor, OBJECT_DETECTION_CAPABILITIES } from '../../lib/capabilityMap.mjs';
+import {
+  detectionCapabilitiesIn,
+  detectionGroupFor,
+  OBJECT_DETECTION_CAPABILITIES,
+} from '../../lib/capabilityMap.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
 import { isLoopbackUrl, rewriteLoopbackHost } from '../../lib/streamUrl.mjs';
 import type { AnyScryptedDevice } from '../../lib/types.mjs';
@@ -60,6 +64,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   }
 
   override async onInit(): Promise<void> {
+    // What this device already carries is the only record of a previous discovery that
+    // survives a restart. Without it the first sync starts from an empty set, and a
+    // detector that is briefly unreachable makes reconciliation strip every detection
+    // capability — taking its Insights history with it, permanently.
+    this.detectionCapabilities = detectionCapabilitiesIn(this.getCapabilities());
+
     // Registered before anything can arm one: `homey.setTimeout` ties a timer to the app's
     // lifetime, not this device's, so a camera deleted mid-detection would otherwise leave
     // callbacks pending for up to an hour that then write capabilities on a dead device.
@@ -209,7 +219,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       ScryptedMimeTypes.MediaStreamUrl,
     );
 
-    if (!streamUrl?.url) throw new Error('Scrypted returned no stream URL for this camera.');
+    if (!streamUrl?.url) throw new Error(this.homey.__('errors.no_stream_url'));
     this.trace(`stream resolved: ${streamUrl.url.replace(/\/\/[^/@]+@/, '//***@')}`);
 
     // Scrypted's rebroadcast plugin advertises 127.0.0.1, which from Homey means Homey.
@@ -320,8 +330,10 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     }
 
     if (triggeredGroups.size && this.hasCapability('scrypted_detection')) {
-      await this.setCapabilityValue('scrypted_detection', [...triggeredGroups].join(', '))
-        .catch(() => undefined);
+      const summary = [...triggeredGroups].join(', ');
+      if (this.getCapabilityValue('scrypted_detection') !== summary) {
+        await this.setCapabilityValue('scrypted_detection', summary).catch(() => undefined);
+      }
     }
   }
 
@@ -350,7 +362,13 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   private async raiseDetectionAlarm(capability: string): Promise<void> {
     if (!this.hasCapability(capability) || this.resources.isReleased) return;
 
-    await this.setCapabilityValue(capability, true).catch(() => undefined);
+    // Scrypted's detector is a frame-rate sampler, not a change feed: it re-reports the
+    // same person every frame for as long as they stand there. Writing an alarm that is
+    // already true costs a Homey round trip each time, which is why the generic binding
+    // path guards the same way. The countdown below still restarts on every detection.
+    if (this.getCapabilityValue(capability) !== true) {
+      await this.setCapabilityValue(capability, true).catch(() => undefined);
+    }
 
     const existing = this.resetTimers.get(capability);
     if (existing) this.homey.clearTimeout(existing);

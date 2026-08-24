@@ -169,6 +169,9 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   private async handleHubDisconnected(): Promise<void> {
+    // Invalidates any sync still in flight. Without this it would finish against the proxy
+    // that just died, re-install it, and call setAvailable on a device that is not.
+    this.syncSeq += 1;
     // The reconnect drives a fresh sync, so a pending retry has nothing left to add.
     this.cancelSyncRetry();
     this.removeEventRegister();
@@ -218,6 +221,11 @@ export class BaseScryptedDevice extends Homey.Device {
       // seen as stale on every restart and get removed and re-added — which would discard
       // their Insights history each time.
       await this.prepareExtraCapabilities(device, facts.interfaces);
+
+      // Before reconciliation, not only before the event subscription: `removeCapability`
+      // is the most destructive call in this method — it breaks dependent Flows and
+      // discards Insights history — so an overtaken sync must not reach it.
+      if (!current()) return;
       await this.syncCapabilities();
       await this.syncEnergy();
       this.registerWriters();
@@ -234,12 +242,15 @@ export class BaseScryptedDevice extends Homey.Device {
         ? device[ScryptedInterfaceProperty.online] !== false
         : true;
       if (online) await this.setAvailable().catch(() => undefined);
-      else await this.setUnavailable('Offline in Scrypted').catch(() => undefined);
+      else await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
 
       // Bound to the device, whatever Scrypted says about it, so the next failure starts
       // from the short delay again.
       this.cancelSyncRetry();
     } catch (err) {
+      // An overtaken sync must not report its own failure: a newer one may already have
+      // brought the device up, and this would mark it unavailable again.
+      if (!current()) return;
       this.error('Sync failed:', (err as Error).message);
       await this.setUnavailable((err as Error).message).catch(() => undefined);
       this.scheduleSyncRetry();
@@ -378,7 +389,10 @@ export class BaseScryptedDevice extends Homey.Device {
       try {
         this.eventRegisters.push(
           device.listen(iface, (_source: unknown, details: EventDetails, data: unknown) => {
-            void this.handleScryptedEvent(details, data);
+            // Never bare `void`: this is the boundary where data the Scrypted side controls
+            // enters our code, and an unhandled rejection here takes the whole app down.
+            this.handleScryptedEvent(details, data)
+              .catch(err => this.error(`Event on ${iface} failed:`, (err as Error).message));
           }),
         );
       } catch (err) {
@@ -395,7 +409,7 @@ export class BaseScryptedDevice extends Homey.Device {
 
 
     if (details.eventInterface === ScryptedInterface.Online) {
-      if (data === false) await this.setUnavailable('Offline in Scrypted').catch(() => undefined);
+      if (data === false) await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
       else await this.setAvailable().catch(() => undefined);
       return;
     }

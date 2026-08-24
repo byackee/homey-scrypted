@@ -8,9 +8,9 @@
         "nl": "Een object wordt gedetecteerd"
       },
       "titleFormatted": {
-        "en": "[[detection_class]] is detected",
-        "fr": "[[detection_class]] est détecté",
-        "nl": "[[detection_class]] wordt gedetecteerd"
+        "en": "[[detection_class]] detected",
+        "fr": "Détection : [[detection_class]]",
+        "nl": "[[detection_class]] gedetecteerd"
       },
       "hint": {
         "en": "Fires when Scrypted's object detector recognises something on this camera.",
@@ -21,15 +21,68 @@
         {
           "name": "detection_class",
           "type": "dropdown",
-          "title": { "en": "Object", "fr": "Objet", "nl": "Object" },
+          "title": {
+            "en": "Object",
+            "fr": "Objet",
+            "nl": "Object"
+          },
           "values": [
-            { "id": "any", "title": { "en": "Any object", "fr": "N'importe quel objet", "nl": "Elk object" } },
-            { "id": "person", "title": { "en": "Person", "fr": "Personne", "nl": "Persoon" } },
-            { "id": "vehicle", "title": { "en": "Vehicle", "fr": "Véhicule", "nl": "Voertuig" } },
-            { "id": "animal", "title": { "en": "Animal", "fr": "Animal", "nl": "Dier" } },
-            { "id": "package", "title": { "en": "Package", "fr": "Colis", "nl": "Pakket" } },
-            { "id": "face", "title": { "en": "Face", "fr": "Visage", "nl": "Gezicht" } },
-            { "id": "motion", "title": { "en": "Motion", "fr": "Mouvement", "nl": "Beweging" } }
+            {
+              "id": "any",
+              "title": {
+                "en": "Any object",
+                "fr": "N'importe quel objet",
+                "nl": "Elk object"
+              }
+            },
+            {
+              "id": "person",
+              "title": {
+                "en": "Person",
+                "fr": "Personne",
+                "nl": "Persoon"
+              }
+            },
+            {
+              "id": "vehicle",
+              "title": {
+                "en": "Vehicle",
+                "fr": "Véhicule",
+                "nl": "Voertuig"
+              }
+            },
+            {
+              "id": "animal",
+              "title": {
+                "en": "Animal",
+                "fr": "Animal",
+                "nl": "Dier"
+              }
+            },
+            {
+              "id": "package",
+              "title": {
+                "en": "Package",
+                "fr": "Colis",
+                "nl": "Pakket"
+              }
+            },
+            {
+              "id": "face",
+              "title": {
+                "en": "Face",
+                "fr": "Visage",
+                "nl": "Gezicht"
+              }
+            },
+            {
+              "id": "motion",
+              "title": {
+                "en": "Motion",
+                "fr": "Mouvement",
+                "nl": "Beweging"
+              }
+            }
           ]
         }
       ],
@@ -37,25 +90,47 @@
         {
           "name": "detection_class",
           "type": "string",
-          "title": { "en": "Object", "fr": "Objet", "nl": "Object" },
-          "example": { "en": "person" }
+          "title": {
+            "en": "Object",
+            "fr": "Objet",
+            "nl": "Object"
+          },
+          "example": {
+            "en": "person"
+          }
         },
         {
           "name": "label",
           "type": "string",
-          "title": { "en": "Label", "fr": "Étiquette", "nl": "Label" },
-          "example": { "en": "Alice" }
+          "title": {
+            "en": "Label",
+            "fr": "Étiquette",
+            "nl": "Label"
+          },
+          "example": {
+            "en": "Alice"
+          }
         },
         {
           "name": "score",
           "type": "number",
-          "title": { "en": "Confidence", "fr": "Confiance", "nl": "Zekerheid" },
-          "example": { "en": "87" }
+          "title": {
+            "en": "Confidence",
+            "fr": "Confiance",
+            "nl": "Zekerheid"
+          },
+          "example": {
+            "en": "87"
+          }
         },
         {
           "name": "snapshot",
           "type": "image",
-          "title": { "en": "Snapshot", "fr": "Instantané", "nl": "Momentopname" }
+          "title": {
+            "en": "Snapshot",
+            "fr": "Instantané",
+            "nl": "Momentopname"
+          }
         }
       ]
     },
@@ -75,7 +150,11 @@
         {
           "name": "snapshot",
           "type": "image",
-          "title": { "en": "Snapshot", "fr": "Instantané", "nl": "Momentopname" }
+          "title": {
+            "en": "Snapshot",
+            "fr": "Instantané",
+            "nl": "Momentopname"
+          }
         }
       ]
     }

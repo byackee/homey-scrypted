@@ -98,11 +98,11 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
     const password = String(data.password ?? '');
     const port = Number(data.port ?? 10443);
 
-    if (!host) throw new Error('A host or IP address is required.');
-    if (!username) throw new Error('A username is required.');
-    if (!password) throw new Error('A password or login token is required.');
+    if (!host) throw new Error(this.homey.__('errors.host_required'));
+    if (!username) throw new Error(this.homey.__('errors.username_required'));
+    if (!password) throw new Error(this.homey.__('errors.password_required'));
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new Error('The port must be a number between 1 and 65535.');
+      throw new Error(this.homey.__('errors.port_invalid'));
     }
 
     return { host, port, username, password };

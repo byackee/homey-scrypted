@@ -81,7 +81,7 @@ export default class ScryptedApp extends Homey.App {
   async updateConfig(update: Omit<ScryptedConfig, 'password'> & { password?: string }): Promise<void> {
     const stored = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;
     const password = update.password || stored?.password;
-    if (!password) throw new Error('A password is required.');
+    if (!password) throw new Error(this.homey.__('errors.password_required'));
 
     await this.saveConfig({
       host: update.host,

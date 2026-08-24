@@ -25,7 +25,10 @@ export class DeviceResources {
 
   constructor(private readonly logError: Logger = () => undefined) {}
 
-  /** True once `releaseAll` has run. Nothing may be registered against the device after it. */
+  /**
+   * True from the moment `releaseAll` *starts*, not when it finishes — call sites branch on
+   * this across an await, so the stricter reading is the one that keeps them honest.
+   */
   get isReleased(): boolean {
     return this.released;
   }
@@ -58,6 +61,8 @@ export class DeviceResources {
    * working on a second attempt.
    */
   async releaseAll(): Promise<void> {
+    // Set before the first await, not after the drain: that is what makes "nothing can be
+    // stored once the release has begun" true, rather than merely true once it has ended.
     this.released = true;
 
     while (this.entries.length) {

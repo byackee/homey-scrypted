@@ -535,3 +535,52 @@ test('an abandoned attempt does not arm a reconnect against a healthy connection
     mock.timers.reset();
   }
 });
+
+test('a destroyed hub refuses to open another connection', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    let attempts = 0;
+    const hub = new ScryptedHub({
+      connect: async () => { attempts += 1; return fakeClient() as never; },
+    });
+
+    await hub.setConfig(CONFIG);
+    await flush();
+    assert.equal(attempts, 1);
+
+    hub.destroy();
+
+    // A camera operation racing app unload reaches the hub through getDevice or
+    // getMediaManager. Answering it would open an authenticated session with no destroy
+    // left to close it.
+    await assert.rejects(hub.getClient(), /closed/);
+    assert.equal(attempts, 1, 'a destroyed hub opened another connection');
+    assert.equal(hub.isConnected, false);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('repairing onto another server tells the devices the old one is gone', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const hub = new ScryptedHub({ connect: async () => fakeClient() as never });
+    let disconnected = 0;
+    hub.on('disconnected', () => { disconnected += 1; });
+
+    await hub.setConfig(CONFIG);
+    await flush();
+    assert.equal(disconnected, 0);
+
+    // Devices hold a proxy bound to the old socket. Without this event they keep it, and
+    // keep reporting themselves available, for the whole of the new handshake.
+    await hub.setConfig({ ...CONFIG, host: '192.168.50.73' });
+    await flush();
+
+    assert.equal(disconnected, 1, 'a repair replaced the connection silently');
+    assert.equal(hub.isConnected, true);
+    hub.destroy();
+  } finally {
+    mock.timers.reset();
+  }
+});

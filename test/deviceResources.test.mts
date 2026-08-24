@@ -101,3 +101,36 @@ test('isReleased reports the state the call sites branch on', async () => {
   await resources.releaseAll();
   assert.equal(resources.isReleased, true);
 });
+
+test('a registration arriving while the release is still running is not kept', async () => {
+  const released: string[] = [];
+  const resources = new DeviceResources();
+  let late: Promise<boolean> | null = null;
+
+  // The window that matters is *during* the drain, not after it returns: a slow release
+  // yields the event loop, and that is exactly when an in-flight `createImage` lands.
+  await resources.add('slow', async () => {
+    released.push('slow');
+    late = resources.add('late', () => { released.push('late'); });
+    await new Promise(resolve => setImmediate(resolve));
+  });
+
+  await resources.releaseAll();
+
+  assert.equal(await late, false, 'a registration made mid-release was kept');
+  assert.deepEqual(released, ['slow', 'late']);
+  assert.equal(resources.size, 0);
+});
+
+test('isReleased is true from the moment the release starts, not when it ends', async () => {
+  const resources = new DeviceResources();
+  let seenDuring: boolean | null = null;
+
+  await resources.add('observer', async () => {
+    seenDuring = resources.isReleased;
+    await new Promise(resolve => setImmediate(resolve));
+  });
+
+  await resources.releaseAll();
+  assert.equal(seenDuring, true, 'call sites branching on isReleased could still register');
+});
