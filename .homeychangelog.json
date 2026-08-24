@@ -23,5 +23,10 @@
     "en": "Fixes Repair failing with an error instead of opening. Repair is how you point the app at a Scrypted server whose address has changed, so it mattered most exactly when it did not work.",
     "fr": "Corrige la réparation qui échouait avec une erreur au lieu de s'ouvrir. C'est par elle qu'on redirige l'app vers un serveur Scrypted dont l'adresse a changé — elle comptait donc le plus au moment précis où elle ne fonctionnait pas.",
     "nl": "Lost op dat Repareren mislukte met een foutmelding in plaats van te openen. Via Repareren wijs je de app naar een Scrypted-server waarvan het adres is gewijzigd, dus het was juist nodig op het moment dat het niet werkte."
+  },
+  "1.0.5": {
+    "en": "Battery-powered cameras now report one battery reading instead of two overlapping ones, and declare their battery type. Fixes the camera snapshot going stale after the app reconnected to Scrypted. Dutch detection labels, a French wording fix, and a clearer Flow trigger title.",
+    "fr": "Les caméras sur batterie ne remontent plus qu'une seule mesure au lieu de deux qui se recouvraient, et déclarent leur type de batterie. Corrige l'instantané de caméra qui se figeait après une reconnexion de l'app à Scrypted. Libellés de détection en néerlandais, correction d'un accord en français, et titre de déclencheur de Flow plus clair.",
+    "nl": "Camera's op batterij melden nu één batterijwaarde in plaats van twee overlappende, en geven hun batterijtype door. Lost op dat de momentopname van een camera bleef hangen nadat de app opnieuw verbinding maakte met Scrypted. Nederlandse detectielabels, een Franse taalcorrectie en een duidelijkere titel voor de Flow-trigger."
   }
 }

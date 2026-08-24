@@ -1,6 +1,6 @@
 {
   "id": "com.dataweavelabs.scrypted",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "compatibility": ">=12.7.0",
   "sdk": 3,
   "platforms": [
@@ -38,6 +38,15 @@
       "onvif",
       "détection",
       "sonnette"
+    ],
+    "nl": [
+      "scrypted",
+      "camera",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "detectie",
+      "deurbel"
     ]
   },
   "images": {

@@ -3,3 +3,4 @@ tools/
 .testbuild/
 .omc/
 tsconfig.test.json
+README.md
