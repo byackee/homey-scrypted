@@ -101,6 +101,29 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     if (interfaces.includes(ScryptedInterface.VideoCamera)) {
       await this.setupVideo();
     }
+
+    await this.clearStaleDetectionAlarms();
+  }
+
+  /**
+   * Clears a detection alarm that was left latched on.
+   *
+   * The reset timer writes `false`, and Homey prevents capability writes while a device is
+   * unavailable. A hub disconnect landing between the detection and its timer therefore
+   * loses the clear, and the timer is spent — so the alarm stays on with nothing left to
+   * turn it off. Seeding cannot cover it either: these alarms are derived from events, not
+   * from a Scrypted property, so there is no value to read back. This runs once the device
+   * has been made available again, which is the first moment a write can land.
+   */
+  private async clearStaleDetectionAlarms(): Promise<void> {
+    for (const capability of this.detectionCapabilities) {
+      if (capability === 'scrypted_detection') continue;
+      if (this.resetTimers.has(capability)) continue;
+      if (this.getCapabilityValue(capability) !== true) continue;
+
+      this.trace(`clearing stale ${capability}`);
+      await this.setCapabilityValue(capability, false).catch(() => undefined);
+    }
   }
 
   // ------------------------------------------------------------------ snapshots

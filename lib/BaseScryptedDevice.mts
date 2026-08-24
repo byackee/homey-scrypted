@@ -216,6 +216,18 @@ export class BaseScryptedDevice extends Homey.Device {
         this.bindingsByInterface.set(binding.iface, list);
       }
 
+      const online = facts.interfaces.includes(ScryptedInterface.Online)
+        ? device[ScryptedInterfaceProperty.online] !== false
+        : true;
+      if (online) await this.setAvailable().catch(() => undefined);
+      else await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
+
+      // Availability comes first, before any capability work. Homey prevents capability
+      // and Flow activity on a device marked unavailable, and this device is unavailable
+      // at this point on every app start — `onInit` marks it so until the hub connects.
+      // Seeding values before saying the device is back therefore discarded them, and the
+      // tile stayed blank until Scrypted happened to send an event for that capability,
+      // which for a rarely-changing one is a long time.
       await this.applyHomeyClass(facts.type);
       // Must run before reconciliation, otherwise capabilities a subclass contributes are
       // seen as stale on every restart and get removed and re-added — which would discard
@@ -237,12 +249,6 @@ export class BaseScryptedDevice extends Homey.Device {
       if (!current()) return;
       this.subscribeToEvents(device, facts.interfaces);
       await this.onScryptedSynced(device, facts.interfaces);
-
-      const online = facts.interfaces.includes(ScryptedInterface.Online)
-        ? device[ScryptedInterfaceProperty.online] !== false
-        : true;
-      if (online) await this.setAvailable().catch(() => undefined);
-      else await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
 
       // Bound to the device, whatever Scrypted says about it, so the next failure starts
       // from the short delay again.

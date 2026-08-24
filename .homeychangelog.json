@@ -43,5 +43,10 @@
     "en": "The app and camera icons are redrawn so they render at the right weight and size everywhere Homey shows them, instead of turning into a dark blob at small sizes.",
     "fr": "Les icônes de l'app et de la caméra sont redessinées pour s'afficher à la bonne épaisseur et à la bonne taille partout où Homey les montre, au lieu de devenir une tache sombre en petit format.",
     "nl": "De pictogrammen van de app en de camera zijn opnieuw getekend zodat ze overal waar Homey ze toont in de juiste dikte en grootte verschijnen, in plaats van een donkere vlek te worden op klein formaat."
+  },
+  "1.0.9": {
+    "en": "Camera tiles now show their values immediately after a restart instead of waiting for the next event, and a detection alarm can no longer stay switched on after the connection drops at the wrong moment.",
+    "fr": "Les tuiles de caméra affichent désormais leurs valeurs dès le redémarrage au lieu d'attendre le prochain événement, et une alarme de détection ne peut plus rester allumée si la connexion tombe au mauvais moment.",
+    "nl": "Cameravensters tonen hun waarden nu direct na een herstart in plaats van te wachten op de volgende gebeurtenis, en een detectiealarm kan niet meer aan blijven staan als de verbinding op het verkeerde moment wegvalt."
   }
 }
