@@ -291,22 +291,15 @@ export const CAPABILITY_BINDINGS: readonly CapabilityBinding[] = [
     property: ScryptedInterfaceProperty.airQuality,
     fromScrypted: asNumber,
   },
+  // Scrypted reports one battery property, so it maps to one capability. Deriving
+  // `alarm_battery` from the same `batteryLevel` put a single reading behind two
+  // capabilities, which Homey's battery guidance calls a double UI capability — the level
+  // already says everything the derived alarm would, and Homey draws the low state itself.
   {
     capability: 'measure_battery',
     iface: ScryptedInterface.Battery,
     property: ScryptedInterfaceProperty.batteryLevel,
     fromScrypted: asNumber,
-  },
-  {
-    // Derived rather than reported: Scrypted has no low-battery flag, so the app applies
-    // Homey's conventional 20% threshold to the level it does report.
-    capability: 'alarm_battery',
-    iface: ScryptedInterface.Battery,
-    property: ScryptedInterfaceProperty.batteryLevel,
-    fromScrypted: value => {
-      const level = asNumber(value);
-      return level === undefined ? undefined : level <= 20;
-    },
   },
   {
     capability: 'battery_charging_state',

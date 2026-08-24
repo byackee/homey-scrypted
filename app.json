@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.dataweavelabs.scrypted",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "compatibility": ">=12.7.0",
   "sdk": 3,
   "platforms": [
@@ -39,6 +39,15 @@
       "onvif",
       "détection",
       "sonnette"
+    ],
+    "nl": [
+      "scrypted",
+      "camera",
+      "nvr",
+      "rtsp",
+      "onvif",
+      "detectie",
+      "deurbel"
     ]
   },
   "images": {
@@ -80,9 +89,9 @@
           "nl": "Een object wordt gedetecteerd"
         },
         "titleFormatted": {
-          "en": "!{{[[detection_class]]|Any object}} is detected",
-          "fr": "!{{[[detection_class]]|Un objet}} est détecté",
-          "nl": "!{{[[detection_class]]|Een object}} wordt gedetecteerd"
+          "en": "[[detection_class]] is detected",
+          "fr": "[[detection_class]] est détecté",
+          "nl": "[[detection_class]] wordt gedetecteerd"
         },
         "hint": {
           "en": "Fires when Scrypted's object detector recognises something on this camera.",
@@ -413,11 +422,13 @@
       "insights": true,
       "insightsTitleTrue": {
         "en": "Animal detected",
-        "fr": "Animal détecté"
+        "fr": "Animal détecté",
+        "nl": "Dier gedetecteerd"
       },
       "insightsTitleFalse": {
         "en": "Animal cleared",
-        "fr": "Animal terminé"
+        "fr": "Animal terminé",
+        "nl": "Dier niet meer gedetecteerd"
       },
       "icon": "/assets/capability/alarm_animal.svg"
     },
@@ -435,11 +446,13 @@
       "insights": true,
       "insightsTitleTrue": {
         "en": "Face detected",
-        "fr": "Visage détecté"
+        "fr": "Visage détecté",
+        "nl": "Gezicht gedetecteerd"
       },
       "insightsTitleFalse": {
         "en": "Face cleared",
-        "fr": "Visage terminé"
+        "fr": "Visage terminé",
+        "nl": "Gezicht niet meer gedetecteerd"
       },
       "icon": "/assets/capability/alarm_face.svg"
     },
@@ -457,11 +470,13 @@
       "insights": true,
       "insightsTitleTrue": {
         "en": "Package detected",
-        "fr": "Colis détecté"
+        "fr": "Colis détecté",
+        "nl": "Pakket gedetecteerd"
       },
       "insightsTitleFalse": {
         "en": "Package cleared",
-        "fr": "Colis terminé"
+        "fr": "Colis terminé",
+        "nl": "Pakket niet meer gedetecteerd"
       },
       "icon": "/assets/capability/alarm_package.svg"
     },
@@ -479,11 +494,13 @@
       "insights": true,
       "insightsTitleTrue": {
         "en": "Person detected",
-        "fr": "Personne détecté"
+        "fr": "Personne détectée",
+        "nl": "Persoon gedetecteerd"
       },
       "insightsTitleFalse": {
         "en": "Person cleared",
-        "fr": "Personne terminé"
+        "fr": "Personne terminée",
+        "nl": "Persoon niet meer gedetecteerd"
       },
       "icon": "/assets/capability/alarm_person.svg"
     },
@@ -501,11 +518,13 @@
       "insights": true,
       "insightsTitleTrue": {
         "en": "Vehicle detected",
-        "fr": "Véhicule détecté"
+        "fr": "Véhicule détecté",
+        "nl": "Voertuig gedetecteerd"
       },
       "insightsTitleFalse": {
         "en": "Vehicle cleared",
-        "fr": "Véhicule terminé"
+        "fr": "Véhicule terminé",
+        "nl": "Voertuig niet meer gedetecteerd"
       },
       "icon": "/assets/capability/alarm_vehicle.svg"
     },

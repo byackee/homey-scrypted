@@ -1,12 +1,24 @@
 {
   "type": "boolean",
-  "title": { "en": "Vehicle", "fr": "Véhicule", "nl": "Voertuig" },
+  "title": {
+    "en": "Vehicle",
+    "fr": "Véhicule",
+    "nl": "Voertuig"
+  },
   "uiComponent": "sensor",
   "uiQuickAction": false,
   "getable": true,
   "setable": false,
   "insights": true,
-  "insightsTitleTrue": { "en": "Vehicle detected", "fr": "Véhicule détecté" },
-  "insightsTitleFalse": { "en": "Vehicle cleared", "fr": "Véhicule terminé" },
+  "insightsTitleTrue": {
+    "en": "Vehicle detected",
+    "fr": "Véhicule détecté",
+    "nl": "Voertuig gedetecteerd"
+  },
+  "insightsTitleFalse": {
+    "en": "Vehicle cleared",
+    "fr": "Véhicule terminé",
+    "nl": "Voertuig niet meer gedetecteerd"
+  },
   "icon": "/assets/capability/alarm_vehicle.svg"
 }

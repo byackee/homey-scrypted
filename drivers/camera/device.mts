@@ -96,8 +96,14 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     if (this.snapshotImage) return;
 
     const image = await this.homey.images.createImage();
+    // Resolved per call, never captured: a device proxy is bound to the socket that handed
+    // it out, so the one passed in here dies with the first reconnect. Binding it into the
+    // stream left the tile, the snapshot action and the doorbell token broken until the
+    // Homey app itself restarted — the image is created once, but it is read for years.
     image.setStream(async (stream: NodeJS.WritableStream) => {
-      const buffer = await this.takeSnapshot(device);
+      const live = this.scryptedDevice;
+      if (!live) throw new Error(this.homey.__('errors.not_connected'));
+      const buffer = await this.takeSnapshot(live);
       stream.end(buffer);
     });
 

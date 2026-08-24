@@ -1,12 +1,24 @@
 {
   "type": "boolean",
-  "title": { "en": "Face", "fr": "Visage", "nl": "Gezicht" },
+  "title": {
+    "en": "Face",
+    "fr": "Visage",
+    "nl": "Gezicht"
+  },
   "uiComponent": "sensor",
   "uiQuickAction": false,
   "getable": true,
   "setable": false,
   "insights": true,
-  "insightsTitleTrue": { "en": "Face detected", "fr": "Visage détecté" },
-  "insightsTitleFalse": { "en": "Face cleared", "fr": "Visage terminé" },
+  "insightsTitleTrue": {
+    "en": "Face detected",
+    "fr": "Visage détecté",
+    "nl": "Gezicht gedetecteerd"
+  },
+  "insightsTitleFalse": {
+    "en": "Face cleared",
+    "fr": "Visage terminé",
+    "nl": "Gezicht niet meer gedetecteerd"
+  },
   "icon": "/assets/capability/alarm_face.svg"
 }

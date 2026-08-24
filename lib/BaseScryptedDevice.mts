@@ -190,6 +190,7 @@ export class BaseScryptedDevice extends Homey.Device {
       // their Insights history each time.
       await this.prepareExtraCapabilities(device, facts.interfaces);
       await this.syncCapabilities();
+      await this.syncEnergy();
       this.registerWriters();
       await this.seedValues(device);
 
@@ -214,6 +215,24 @@ export class BaseScryptedDevice extends Homey.Device {
       await this.setUnavailable((err as Error).message).catch(() => undefined);
       this.scheduleSyncRetry();
     }
+  }
+
+  /**
+   * Declares the battery type on devices that report a level.
+   *
+   * Homey wants `energy.batteries` alongside a battery capability, and the driver manifest
+   * is the usual place for it — but that would mark every camera as battery-powered, and
+   * most are not. Capabilities here are derived per device at runtime, so the declaration
+   * follows them. Scrypted reports a level and never a chemistry, so `OTHER` is the honest
+   * answer rather than a guess.
+   */
+  private async syncEnergy(): Promise<void> {
+    const hasBattery = this.hasCapability('measure_battery');
+    const declared = Array.isArray((this.getEnergy() as { batteries?: unknown })?.batteries);
+    if (hasBattery === declared) return;
+
+    await this.setEnergy(hasBattery ? { batteries: ['OTHER'] } : {})
+      .catch(err => this.error('setEnergy failed:', (err as Error).message));
   }
 
   private async applyHomeyClass(type: string): Promise<void> {

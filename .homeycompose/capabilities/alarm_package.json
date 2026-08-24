@@ -1,12 +1,24 @@
 {
   "type": "boolean",
-  "title": { "en": "Package", "fr": "Colis", "nl": "Pakket" },
+  "title": {
+    "en": "Package",
+    "fr": "Colis",
+    "nl": "Pakket"
+  },
   "uiComponent": "sensor",
   "uiQuickAction": false,
   "getable": true,
   "setable": false,
   "insights": true,
-  "insightsTitleTrue": { "en": "Package detected", "fr": "Colis détecté" },
-  "insightsTitleFalse": { "en": "Package cleared", "fr": "Colis terminé" },
+  "insightsTitleTrue": {
+    "en": "Package detected",
+    "fr": "Colis détecté",
+    "nl": "Pakket gedetecteerd"
+  },
+  "insightsTitleFalse": {
+    "en": "Package cleared",
+    "fr": "Colis terminé",
+    "nl": "Pakket niet meer gedetecteerd"
+  },
   "icon": "/assets/capability/alarm_package.svg"
 }

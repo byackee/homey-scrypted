@@ -8,9 +8,9 @@
         "nl": "Een object wordt gedetecteerd"
       },
       "titleFormatted": {
-        "en": "!{{[[detection_class]]|Any object}} is detected",
-        "fr": "!{{[[detection_class]]|Un objet}} est détecté",
-        "nl": "!{{[[detection_class]]|Een object}} wordt gedetecteerd"
+        "en": "[[detection_class]] is detected",
+        "fr": "[[detection_class]] est détecté",
+        "nl": "[[detection_class]] wordt gedetecteerd"
       },
       "hint": {
         "en": "Fires when Scrypted's object detector recognises something on this camera.",

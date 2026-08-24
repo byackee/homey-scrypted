@@ -1,9 +1,11 @@
 <!--
-  Source of truth for the "configure" pairing view.
+  Source of truth for the "configure" view.
 
-  Homey Compose has no shared-pair-view mechanism, so this file is copied into every
-  driver's pair/ folder by tools/build-pair-views.mjs (run via `npm run build`). Edit this
-  file, never the generated copies.
+  Homey Compose cannot share a custom view between drivers, so tools/build-driver-views.mjs
+  copies this file into each driver's pair/ or repair/ folder — whichever that driver's
+  manifest declares the view in. Run it with `npm run driver-views` (or `npm run app:build`,
+  which includes it); the plain `npm run build` is only tsc and does not regenerate views.
+  Edit this file, never the generated copies.
 -->
 <style>
   .field { margin-bottom: 14px; }

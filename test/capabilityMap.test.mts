@@ -74,12 +74,6 @@ test('garage door inverts Scrypted entryOpen', () => {
   assert.equal(read('garagedoor_closed', false), true);
 });
 
-test('battery alarm is derived from the reported level', () => {
-  assert.equal(read('alarm_battery', 100), false);
-  assert.equal(read('alarm_battery', 21), false);
-  assert.equal(read('alarm_battery', 20), true);
-  assert.equal(read('alarm_battery', 5), true);
-});
 
 test('charge states collapse onto the three Homey values', () => {
   assert.equal(read('battery_charging_state', ChargeState.Charging), 'charging');
@@ -150,9 +144,9 @@ test('Entry maps to a garage door or a window covering depending on device type'
   assert.deepEqual(blind.map(b => b.capability), ['windowcoverings_state']);
 });
 
-test('a battery interface yields both the level and the derived alarm', () => {
-  const found = bindingsFor({ type: 'Sensor', interfaces: [ScryptedInterface.Battery] });
-  assert.deepEqual(found.map(b => b.capability).sort(), ['alarm_battery', 'measure_battery']);
+test('a battery interface yields the level and nothing derived from it', () => {
+  const found = bindingsFor({ type: 'Camera', interfaces: [ScryptedInterface.Battery] });
+  assert.deepEqual(found.map(b => b.capability).sort(), ['measure_battery']);
 });
 
 test('every binding declares a reader or a writer', () => {
@@ -199,5 +193,28 @@ test('every grouped class resolves to a capability this app declares', () => {
   ]);
   for (const capability of Object.values(OBJECT_DETECTION_CAPABILITIES)) {
     assert.ok(declared.has(capability), `${capability} is not a declared capability`);
+  }
+});
+
+/**
+ * Composite properties carry several independent components, and Homey has no single
+ * capability for them: `hsv` has to become `light_hue` and `light_saturation`, and
+ * `temperatureSetting` carries both a setpoint and a mode. Each capability reads a
+ * different component, so this is decomposition, not duplication — named here rather than
+ * left to weaken the rule below.
+ */
+const COMPOSITE_PROPERTIES = new Set(['hsv', 'temperatureSetting']);
+
+test('no scalar Scrypted property is mapped to more than one Homey capability', () => {
+  // Two capabilities fed by one reading are a double UI capability in Homey's own battery
+  // guidance, and the second says nothing the first did not. `measure_battery` and a
+  // derived `alarm_battery` both read `batteryLevel`, which is how this app acquired one.
+  const seen = new Map<string, string>();
+  for (const binding of CAPABILITY_BINDINGS) {
+    if (!binding.property || COMPOSITE_PROPERTIES.has(String(binding.property))) continue;
+    const source = `${binding.iface}.${binding.property}`;
+    const first = seen.get(source);
+    assert.equal(first, undefined, `${source} feeds both ${first} and ${binding.capability}`);
+    seen.set(source, binding.capability);
   }
 });
