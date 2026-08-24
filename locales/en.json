@@ -11,11 +11,17 @@
     }
   },
   "errors": {
-    "not_connected": "Not connected to Scrypted.",
+    "configure_first": "Open the Scrypted app settings and enter your server details first.",
     "device_missing": "This device no longer exists on the Scrypted server.",
-    "no_video": "This Scrypted device does not expose a video stream.",
+    "host_required": "A host or IP address is required.",
     "no_snapshot": "This Scrypted device does not expose a snapshot.",
-    "configure_first": "Open the Scrypted app settings and enter your server details first."
+    "no_stream_url": "Scrypted returned no stream URL for this camera.",
+    "no_video": "This Scrypted device does not expose a video stream.",
+    "not_connected": "Not connected to Scrypted.",
+    "offline": "Offline in Scrypted",
+    "password_required": "A password or login token is required.",
+    "port_invalid": "The port must be a number between 1 and 65535.",
+    "username_required": "A username is required."
   },
   "settings": {
     "title": "Scrypted",

@@ -11,11 +11,17 @@
     }
   },
   "errors": {
-    "not_connected": "Niet verbonden met Scrypted.",
+    "configure_first": "Open eerst de instellingen van de Scrypted-app en vul je servergegevens in.",
     "device_missing": "Dit apparaat bestaat niet meer op de Scrypted-server.",
-    "no_video": "Dit Scrypted-apparaat biedt geen videostream.",
+    "host_required": "Een host of IP-adres is vereist.",
     "no_snapshot": "Dit Scrypted-apparaat biedt geen momentopname.",
-    "configure_first": "Open eerst de instellingen van de Scrypted-app en vul je servergegevens in."
+    "no_stream_url": "Scrypted heeft geen stream-URL voor deze camera teruggegeven.",
+    "no_video": "Dit Scrypted-apparaat biedt geen videostream.",
+    "not_connected": "Niet verbonden met Scrypted.",
+    "offline": "Offline in Scrypted",
+    "password_required": "Een wachtwoord of aanmeldtoken is vereist.",
+    "port_invalid": "De poort moet een getal tussen 1 en 65535 zijn.",
+    "username_required": "Een gebruikersnaam is vereist."
   },
   "settings": {
     "title": "Scrypted",

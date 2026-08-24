@@ -88,6 +88,11 @@ export class ScryptedHub extends EventEmitter {
    * that a burst of devices initialising at app start does not open N sockets.
    */
   async getClient(): Promise<ScryptedClientStatic> {
+    // The epoch discards attempts that were already in flight when the hub moved on; it
+    // cannot refuse one that starts afterwards, because that one reads the new epoch and
+    // passes. Without this gate a call landing after `destroy` opens and adopts a fresh
+    // authenticated session that outlives the app, with no second `destroy` to close it.
+    if (this.stopped) throw new Error('The Scrypted connection has been closed.');
     if (this.client) return this.client;
     if (this.connecting) return this.connecting;
 
@@ -257,6 +262,10 @@ export class ScryptedHub extends EventEmitter {
 
     const previous = this.client;
     this.client = null;
+    // Nulling first means `handleDeath`'s identity check fails and `handleClose` — the only
+    // emitter of `disconnected` — never runs. Devices would keep a dead proxy and report
+    // themselves available for the whole new handshake, up to the connect deadline.
+    if (previous) this.emit('disconnected');
     try {
       previous?.disconnect();
     } catch {

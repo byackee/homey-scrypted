@@ -434,20 +434,48 @@ export const CAPABILITY_BINDINGS: readonly CapabilityBinding[] = [
 ];
 
 /** Every capability this app can produce, including the ones defined by the app itself. */
-export const OBJECT_DETECTION_CAPABILITIES: Readonly<Record<string, string>> = {
-  person: 'alarm_person',
-  vehicle: 'alarm_vehicle',
-  car: 'alarm_vehicle',
-  truck: 'alarm_vehicle',
-  motorcycle: 'alarm_vehicle',
-  bus: 'alarm_vehicle',
-  animal: 'alarm_animal',
-  dog: 'alarm_animal',
-  cat: 'alarm_animal',
-  bird: 'alarm_animal',
-  package: 'alarm_package',
-  face: 'alarm_face',
-};
+/**
+ * Detection class to Homey capability.
+ *
+ * Null-prototyped on purpose: the key is a class name that Scrypted supplies, so it is
+ * whatever the detector plugin says it is. On a normal object literal a class named
+ * `constructor` or `toString` resolves up the prototype chain and hands back a function.
+ */
+export const OBJECT_DETECTION_CAPABILITIES: Readonly<Record<string, string>> = Object.assign(
+  Object.create(null) as Record<string, string>,
+  {
+    person: 'alarm_person',
+    vehicle: 'alarm_vehicle',
+    car: 'alarm_vehicle',
+    truck: 'alarm_vehicle',
+    motorcycle: 'alarm_vehicle',
+    bus: 'alarm_vehicle',
+    animal: 'alarm_animal',
+    dog: 'alarm_animal',
+    cat: 'alarm_animal',
+    bird: 'alarm_animal',
+    package: 'alarm_package',
+    face: 'alarm_face',
+  },
+);
+
+/**
+ * The detection capabilities among the ones a device already carries.
+ *
+ * Discovery asks the detector what it can report, and deliberately keeps the previous
+ * answer when that call fails. On the first sync after an app restart there is no previous
+ * answer in memory — but the device itself still carries the capabilities from last time,
+ * which is the same information. Seeding from them is what lets the failure path keep
+ * anything at all, rather than letting reconciliation strip capabilities and discard their
+ * Insights history for good.
+ */
+export function detectionCapabilitiesIn(capabilities: readonly string[]): Set<string> {
+  const known = new Set<string>([
+    ...Object.values(OBJECT_DETECTION_CAPABILITIES),
+    'scrypted_detection',
+  ]);
+  return new Set(capabilities.filter(capability => known.has(capability)));
+}
 
 /**
  * Normalises a Scrypted detection class onto the group the Flow card offers.
@@ -460,7 +488,9 @@ export const OBJECT_DETECTION_CAPABILITIES: Readonly<Record<string, string>> = {
 export function detectionGroupFor(className: string): string {
   const normalised = className.toLowerCase();
   const capability = OBJECT_DETECTION_CAPABILITIES[normalised];
-  return capability ? capability.replace('alarm_', '') : normalised;
+  // Type-checked rather than truthy-checked: belt and braces with the null prototype above,
+  // because a truthy non-string here throws, and this runs on every detection event.
+  return typeof capability === 'string' ? capability.replace('alarm_', '') : normalised;
 }
 
 /** Returns the bindings that apply to a given Scrypted device. */

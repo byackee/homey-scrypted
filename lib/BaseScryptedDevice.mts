@@ -3,6 +3,7 @@ import { ScryptedInterface, ScryptedInterfaceProperty } from '@scrypted/types';
 import type { EventDetails, EventListenerRegister } from '@scrypted/types';
 import { bindingsFor, type CapabilityBinding } from './capabilityMap.mjs';
 import { homeyClassFor } from './deviceTypeMap.mjs';
+import { DeviceResources } from './DeviceResources.mjs';
 import type { ScryptedHub } from './ScryptedHub.mjs';
 import type { AnyScryptedDevice } from './types.mjs';
 
@@ -43,6 +44,14 @@ export class BaseScryptedDevice extends Homey.Device {
   private syncRetryDelay = SYNC_RETRY_MIN_MS;
   /** Set once the device is gone, so nothing armed before that can outlive it. */
   private destroyed = false;
+  /** Guards the teardown, which both `onUninit` and `onDeleted` can reach. */
+  private tornDown = false;
+
+  /**
+   * Everything this device registered with Homey. Registrations go in as they are created
+   * and all come back out in `teardown`, including any that were still in flight.
+   */
+  protected readonly resources = new DeviceResources(message => this.error(message));
   /** Identifies the newest sync, so a slower one cannot undo the work of a newer one. */
   private syncSeq = 0;
   private onHubConnected = (): void => { void this.sync(); };
@@ -78,22 +87,42 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   override async onUninit(): Promise<void> {
-    this.teardown();
+    await this.teardown();
   }
 
   override async onDeleted(): Promise<void> {
-    this.teardown();
+    // Homey types this `void` and does not await it, so a rejection here would go
+    // unobserved — which current Node treats as fatal. `teardown` is total for that reason.
+    await this.teardown();
   }
 
-  private teardown(): void {
-    // Before cancelling, so a sync already in flight cannot re-arm behind this call: the
-    // timer it would leave running has nothing left to cancel it.
-    this.destroyed = true;
-    this.hub.off('connected', this.onHubConnected);
-    this.hub.off('disconnected', this.onHubDisconnected);
-    this.cancelSyncRetry();
-    this.removeEventRegister();
-    this.scryptedDevice = null;
+  /**
+   * The single exit path, whichever of `onUninit` and `onDeleted` reaches it first.
+   *
+   * Both used to run their own partial cleanup, and a subclass overriding only `onUninit`
+   * left its timers and registrations running when the device was deleted instead — which
+   * is the path where nothing else will ever come along to stop them.
+   */
+  private async teardown(): Promise<void> {
+    if (this.tornDown) return;
+    this.tornDown = true;
+
+    try {
+      // Before cancelling, so a sync already in flight cannot re-arm behind this call: the
+      // timer it would leave running has nothing left to cancel it.
+      this.destroyed = true;
+      this.hub.off('connected', this.onHubConnected);
+      this.hub.off('disconnected', this.onHubDisconnected);
+      this.cancelSyncRetry();
+      this.removeEventRegister();
+      this.scryptedDevice = null;
+
+      await this.resources.releaseAll();
+    } catch (err) {
+      // Total by construction: `onDeleted` cannot observe a rejection, and a half-finished
+      // teardown is still better than an unhandled one.
+      this.error('Teardown failed:', (err as Error).message);
+    }
   }
 
   private cancelSyncRetry(): void {
@@ -140,6 +169,9 @@ export class BaseScryptedDevice extends Homey.Device {
   }
 
   private async handleHubDisconnected(): Promise<void> {
+    // Invalidates any sync still in flight. Without this it would finish against the proxy
+    // that just died, re-install it, and call setAvailable on a device that is not.
+    this.syncSeq += 1;
     // The reconnect drives a fresh sync, so a pending retry has nothing left to add.
     this.cancelSyncRetry();
     this.removeEventRegister();
@@ -189,6 +221,11 @@ export class BaseScryptedDevice extends Homey.Device {
       // seen as stale on every restart and get removed and re-added — which would discard
       // their Insights history each time.
       await this.prepareExtraCapabilities(device, facts.interfaces);
+
+      // Before reconciliation, not only before the event subscription: `removeCapability`
+      // is the most destructive call in this method — it breaks dependent Flows and
+      // discards Insights history — so an overtaken sync must not reach it.
+      if (!current()) return;
       await this.syncCapabilities();
       await this.syncEnergy();
       this.registerWriters();
@@ -205,12 +242,15 @@ export class BaseScryptedDevice extends Homey.Device {
         ? device[ScryptedInterfaceProperty.online] !== false
         : true;
       if (online) await this.setAvailable().catch(() => undefined);
-      else await this.setUnavailable('Offline in Scrypted').catch(() => undefined);
+      else await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
 
       // Bound to the device, whatever Scrypted says about it, so the next failure starts
       // from the short delay again.
       this.cancelSyncRetry();
     } catch (err) {
+      // An overtaken sync must not report its own failure: a newer one may already have
+      // brought the device up, and this would mark it unavailable again.
+      if (!current()) return;
       this.error('Sync failed:', (err as Error).message);
       await this.setUnavailable((err as Error).message).catch(() => undefined);
       this.scheduleSyncRetry();
@@ -302,14 +342,28 @@ export class BaseScryptedDevice extends Homey.Device {
       if (this.wiredCapabilities.has(binding.capability)) continue;
 
       this.wiredCapabilities.add(binding.capability);
-      this.registerCapabilityListener(binding.capability, async (value: unknown) => {
-        const device = this.scryptedDevice;
-        if (!device) throw new Error(this.homey.__('errors.not_connected'));
+      try {
+        this.registerCapabilityListener(binding.capability, async (value: unknown) => {
+          const device = this.scryptedDevice;
+          if (!device) throw new Error(this.homey.__('errors.not_connected'));
 
-        const current = this.bindings.find(candidate => candidate.capability === binding.capability);
-        const write = current?.toScrypted ?? binding.toScrypted!;
-        await write(value, device);
-      });
+          const current = this.bindings.find(candidate => candidate.capability === binding.capability);
+          const write = current?.toScrypted ?? binding.toScrypted!;
+          await write(value, device);
+        });
+      } catch (err) {
+        // A capability removed and re-added — a Scrypted mixin toggled off and on — may
+        // still carry its listener. The SDK offers no way to ask and none to unregister, so
+        // the second registration can throw. Letting that escape would abort the rest of
+        // sync() — seeding, subscriptions, snapshot — and strand a device that is fine.
+        //
+        // The id stays in `wiredCapabilities` deliberately: for the duplicate case the
+        // existing listener still works, and retrying every sync would only repeat the
+        // throw. The cost is that any other failure leaves this capability inert until the
+        // app restarts, which is why it is traced as well as logged.
+        this.error(`registerCapabilityListener(${binding.capability}) failed:`, (err as Error).message);
+        this.trace(`capability ${binding.capability} has no writer: ${(err as Error).message}`);
+      }
     }
   }
 
@@ -335,7 +389,10 @@ export class BaseScryptedDevice extends Homey.Device {
       try {
         this.eventRegisters.push(
           device.listen(iface, (_source: unknown, details: EventDetails, data: unknown) => {
-            void this.handleScryptedEvent(details, data);
+            // Never bare `void`: this is the boundary where data the Scrypted side controls
+            // enters our code, and an unhandled rejection here takes the whole app down.
+            this.handleScryptedEvent(details, data)
+              .catch(err => this.error(`Event on ${iface} failed:`, (err as Error).message));
           }),
         );
       } catch (err) {
@@ -352,7 +409,7 @@ export class BaseScryptedDevice extends Homey.Device {
 
 
     if (details.eventInterface === ScryptedInterface.Online) {
-      if (data === false) await this.setUnavailable('Offline in Scrypted').catch(() => undefined);
+      if (data === false) await this.setUnavailable(this.homey.__('errors.offline')).catch(() => undefined);
       else await this.setAvailable().catch(() => undefined);
       return;
     }

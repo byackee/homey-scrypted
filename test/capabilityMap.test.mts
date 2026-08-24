@@ -9,6 +9,7 @@ import {
 } from '@scrypted/types';
 import {
   bindingsFor,
+  detectionCapabilitiesIn,
   CAPABILITY_BINDINGS,
   detectionGroupFor,
   OBJECT_DETECTION_CAPABILITIES,
@@ -216,5 +217,26 @@ test('no scalar Scrypted property is mapped to more than one Homey capability', 
     const first = seen.get(source);
     assert.equal(first, undefined, `${source} feeds both ${first} and ${binding.capability}`);
     seen.set(source, binding.capability);
+  }
+});
+
+test('detection capabilities are recovered from what a device already carries', () => {
+  const found = detectionCapabilitiesIn([
+    'alarm_motion', 'alarm_person', 'alarm_animal', 'scrypted_detection', 'measure_battery',
+  ]);
+  assert.deepEqual([...found].sort(), ['alarm_animal', 'alarm_person', 'scrypted_detection']);
+});
+
+test('a device carrying no detection capabilities recovers an empty set', () => {
+  assert.equal(detectionCapabilitiesIn(['alarm_motion', 'measure_battery']).size, 0);
+});
+
+test('the detection table cannot be walked up the prototype chain', () => {
+  // A class name is whatever the Scrypted detector plugin calls it. On a normal object
+  // literal, "constructor" resolves to a function and the caller throws on `.replace`,
+  // which reaches the event loop uncaught and takes the app down.
+  for (const hostile of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    assert.equal(OBJECT_DETECTION_CAPABILITIES[hostile], undefined, `${hostile} resolved`);
+    assert.equal(detectionGroupFor(hostile), hostile.toLowerCase());
   }
 });

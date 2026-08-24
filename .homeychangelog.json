@@ -28,5 +28,15 @@
     "en": "Battery-powered cameras now report one battery reading instead of two overlapping ones, and declare their battery type. Fixes the camera snapshot going stale after the app reconnected to Scrypted. Dutch detection labels, a French wording fix, and a clearer Flow trigger title.",
     "fr": "Les caméras sur batterie ne remontent plus qu'une seule mesure au lieu de deux qui se recouvraient, et déclarent leur type de batterie. Corrige l'instantané de caméra qui se figeait après une reconnexion de l'app à Scrypted. Libellés de détection en néerlandais, correction d'un accord en français, et titre de déclencheur de Flow plus clair.",
     "nl": "Camera's op batterij melden nu één batterijwaarde in plaats van twee overlappende, en geven hun batterijtype door. Lost op dat de momentopname van een camera bleef hangen nadat de app opnieuw verbinding maakte met Scrypted. Nederlandse detectielabels, een Franse taalcorrectie en een duidelijkere titel voor de Flow-trigger."
+  },
+  "1.0.6": {
+    "en": "Deleting a camera now frees everything it was using. Before, its snapshots and timers kept running until the app was restarted.",
+    "fr": "Supprimer une caméra libère désormais tout ce qu'elle utilisait. Auparavant, ses instantanés et ses minuteries continuaient de tourner jusqu'au redémarrage de l'app.",
+    "nl": "Een camera verwijderen geeft nu alles vrij wat die gebruikte. Voorheen bleven de momentopnamen en timers doorlopen tot de app opnieuw startte."
+  },
+  "1.0.7": {
+    "en": "Fixes the app crashing when a camera reports an unusual detection type, and cameras losing their detection history when the server was slow to start. Detection alarms no longer refresh needlessly while someone stays in view. The French Flow card for detections said the opposite of what it meant, and several messages appeared in English.",
+    "fr": "Corrige un plantage de l'app quand une caméra signale un type de détection inhabituel, et la perte de l'historique de détection des caméras quand le serveur démarrait lentement. Les alarmes de détection ne se rafraîchissent plus inutilement tant qu'une personne reste dans le champ. La carte de Flow française des détections disait le contraire de ce qu'elle signifiait, et plusieurs messages s'affichaient en anglais.",
+    "nl": "Lost een crash op wanneer een camera een ongebruikelijk detectietype meldt, en het verlies van de detectiegeschiedenis wanneer de server traag opstartte. Detectiealarmen vernieuwen niet meer onnodig zolang iemand in beeld blijft. De Franse Flow-kaart voor detecties zei het tegenovergestelde van wat ze bedoelde, en meerdere meldingen verschenen in het Engels."
   }
 }
