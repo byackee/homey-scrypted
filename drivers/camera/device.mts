@@ -59,10 +59,17 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     return [...this.detectionCapabilities];
   }
 
-  override async onUninit(): Promise<void> {
-    for (const timer of this.resetTimers.values()) clearTimeout(timer);
-    this.resetTimers.clear();
-    await super.onUninit();
+  override async onInit(): Promise<void> {
+    // Registered before anything can arm one: `homey.setTimeout` ties a timer to the app's
+    // lifetime, not this device's, so a camera deleted mid-detection would otherwise leave
+    // callbacks pending for up to an hour that then write capabilities on a dead device.
+    await this.resources.add('the detection timers', () => {
+      for (const timer of this.resetTimers.values()) this.homey.clearTimeout(timer);
+      this.resetTimers.clear();
+      this.lastDetectionFrame = null;
+    });
+
+    await super.onInit();
   }
 
   protected override async prepareExtraCapabilities(
@@ -93,7 +100,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * Homey renders it, so the tile is current without this app polling the camera.
    */
   private async setupSnapshot(device: AnyScryptedDevice): Promise<void> {
-    if (this.snapshotImage) return;
+    if (this.snapshotImage || this.resources.isReleased) return;
 
     const image = await this.homey.images.createImage();
     // Resolved per call, never captured: a device proxy is bound to the socket that handed
@@ -106,6 +113,13 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       const buffer = await this.takeSnapshot(live);
       stream.end(buffer);
     });
+
+    // Teardown can land while `createImage` is in flight. `add` releases it for us in that
+    // case, rather than leaving it registered against a device that is gone.
+    if (!await this.resources.add('the snapshot image', async () => {
+        this.snapshotImage = null;
+        await image.unregister();
+      })) return;
 
     this.snapshotImage = image;
     await this.setCameraImage('snapshot', 'Snapshot', image);
@@ -137,7 +151,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * web app and away from home without this app doing any NAT traversal.
    */
   private async setupVideo(): Promise<void> {
-    if (this.video) return;
+    if (this.video || this.resources.isReleased) return;
 
     const videos = videosOf(this.homey);
     if (!videos) {
@@ -147,9 +161,16 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
 
     try {
       const video = await videos.createVideoRTSP({ acceptInvalidCertificates: true });
+      if (!await this.resources.add('the video stream', async () => {
+        this.video = null;
+        await video.unregister();
+      })) return;
+
+      // Adopted before it is wired: `setCameraVideo` can throw, and leaving `this.video`
+      // null then would let the next sync register a second stream on top of this one.
+      this.video = video;
       video.registerVideoUrlListener(async () => ({ url: await this.resolveStreamUrl() }));
       await setCameraVideo(this, 'main', 'Live', video);
-      this.video = video;
     } catch (err) {
       this.error('Could not register video stream:', (err as Error).message);
     }
@@ -266,7 +287,11 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
 
     // Scrypted only retains a frame when the detector flagged the session for retention.
     if (detected.detectionId && typeof device.getDetectionInput === 'function') {
-      this.lastDetectionFrame = await this.fetchDetectionFrame(device, detected.detectionId);
+      const frame = await this.fetchDetectionFrame(device, detected.detectionId);
+      // The fetch is a round-trip to Scrypted, long enough for the device to be deleted
+      // underneath it. Keeping the frame then would pin megabytes to a device that is gone.
+      if (this.resources.isReleased) return;
+      this.lastDetectionFrame = frame;
     }
 
     const raisedAlarms = new Set<string>();
@@ -323,20 +348,28 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * restarts the countdown, which keeps the alarm continuously true while activity lasts.
    */
   private async raiseDetectionAlarm(capability: string): Promise<void> {
-    if (!this.hasCapability(capability)) return;
+    if (!this.hasCapability(capability) || this.resources.isReleased) return;
 
     await this.setCapabilityValue(capability, true).catch(() => undefined);
 
     const existing = this.resetTimers.get(capability);
-    if (existing) clearTimeout(existing);
+    if (existing) this.homey.clearTimeout(existing);
+
+    // Re-checked after the await above: teardown may have swept the map since, and a timer
+    // armed now would have nothing left to cancel it.
+    if (this.resources.isReleased) return;
 
     const seconds = Math.max(1, this.settings.detection_reset_seconds);
     const timer = this.homey.setTimeout(() => {
       this.resetTimers.delete(capability);
       this.setCapabilityValue(capability, false).catch(() => undefined);
+      // The frame is deliberately kept. A Flow image token is a reference Homey resolves
+      // when the consumer fetches it — a phone opening a notification, which is routinely
+      // later than this timer. Dropping it here would turn a stale picture into a broken
+      // one; it is bounded at one frame per camera and released with the device.
     }, seconds * 1000);
 
-    this.resetTimers.set(capability, timer as unknown as NodeJS.Timeout);
+    this.resetTimers.set(capability, timer);
   }
 
   private async triggerObjectDetected(
@@ -362,7 +395,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
 
   /** Lazily creates the Flow image token backed by the most recent detection frame. */
   private async getDetectionImage(): Promise<unknown | null> {
-    if (!this.lastDetectionFrame) return null;
+    if (!this.lastDetectionFrame || this.resources.isReleased) return null;
 
     if (!this.detectionImage) {
       const image = await this.homey.images.createImage();
@@ -371,6 +404,13 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
         if (!frame) throw new Error('No detection frame available.');
         stream.end(frame);
       });
+
+      // Same race as the snapshot.
+      if (!await this.resources.add('the detection image', async () => {
+        this.detectionImage = null;
+        await image.unregister();
+      })) return null;
+
       this.detectionImage = image;
     } else {
       await (this.detectionImage as { update(): Promise<void> }).update().catch(() => undefined);

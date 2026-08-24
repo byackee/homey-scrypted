@@ -28,5 +28,10 @@
     "en": "Battery-powered cameras now report one battery reading instead of two overlapping ones, and declare their battery type. Fixes the camera snapshot going stale after the app reconnected to Scrypted. Dutch detection labels, a French wording fix, and a clearer Flow trigger title.",
     "fr": "Les caméras sur batterie ne remontent plus qu'une seule mesure au lieu de deux qui se recouvraient, et déclarent leur type de batterie. Corrige l'instantané de caméra qui se figeait après une reconnexion de l'app à Scrypted. Libellés de détection en néerlandais, correction d'un accord en français, et titre de déclencheur de Flow plus clair.",
     "nl": "Camera's op batterij melden nu één batterijwaarde in plaats van twee overlappende, en geven hun batterijtype door. Lost op dat de momentopname van een camera bleef hangen nadat de app opnieuw verbinding maakte met Scrypted. Nederlandse detectielabels, een Franse taalcorrectie en een duidelijkere titel voor de Flow-trigger."
+  },
+  "1.0.6": {
+    "en": "Deleting a camera now releases everything it held: its snapshot and detection images, its video registration and its pending detection timers. Before, those kept running and stayed in memory until the app was restarted.",
+    "fr": "Supprimer une caméra libère désormais tout ce qu'elle retenait : ses images d'instantané et de détection, son enregistrement vidéo et ses minuteries de détection en cours. Auparavant, tout cela continuait de tourner et restait en mémoire jusqu'au redémarrage de l'app.",
+    "nl": "Een camera verwijderen geeft nu alles vrij wat die vasthield: de momentopname- en detectiebeelden, de videoregistratie en de lopende detectietimers. Voorheen bleven die doorlopen en in het geheugen staan tot de app opnieuw startte."
   }
 }
