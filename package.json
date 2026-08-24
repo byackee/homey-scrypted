@@ -6,8 +6,8 @@
   "main": "app.mjs",
   "scripts": {
     "build": "tsc",
-    "pair-views": "node tools/build-pair-views.mjs",
-    "app:build": "npm run pair-views && homey app build",
+    "driver-views": "node tools/build-driver-views.mjs",
+    "app:build": "npm run driver-views && homey app build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "tsc -p tsconfig.test.json && node --test \".testbuild/test/*.test.mjs\"",
     "validate": "homey app validate --level debug",
