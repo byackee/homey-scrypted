@@ -92,7 +92,7 @@ the app's memory use and the server's session count flat no matter how many devi
 npm install
 npm run typecheck     # tsc over the app and the tests
 npm test              # unit tests for the conversion and routing logic
-npm run app:build     # generate pair views, run Homey Compose, compile, validate
+npm run app:build     # generate driver views, run Homey Compose, compile, validate
 npm run validate:publish
 homey app run         # run against a Homey Pro on your network
 ```
@@ -101,10 +101,20 @@ The npm `build` script must stay a plain `tsc`: the Homey CLI runs it itself as 
 TypeScript step, so putting `homey app build` there makes the CLI recurse into itself and
 fork indefinitely. The composite command lives under `app:build` for that reason.
 
-`drivers/*/pair/configure.html` is **generated** from `assets/pair/configure.html` by
-`tools/build-pair-views.mjs`; edit the source, not the copies. Homey Compose has no way to
-share a custom pair view between drivers, so the copies are checked in to keep
-`homey app run` working without a build step.
+`drivers/*/{pair,repair}/*.html` are **generated** from `assets/views/` by
+`tools/build-driver-views.mjs`; edit the source, not the copies. Homey Compose has no way to
+share a custom view between drivers, so the copies are checked in to keep `homey app run`
+working without a build step.
+
+**The destination folder is not interchangeable.** A view resolves from
+`drivers/<id>/pair/<viewId>.html` when pairing declares it and from
+`drivers/<id>/repair/<viewId>.html` when repair does, so the generator reads each
+`driver.compose.json` and writes into the folder that driver's declaration implies. It used
+to write everything into `pair/` regardless, which left repair with no file anywhere Homey
+looks: tapping Repair failed with `error_unknown_getting_file`. Nothing caught it, because
+`repair` is absent from Homey's app manifest schema and `homey app validate` walks
+`drivers[].pair[]` only — `test/repairViews.test.mts` exists to assert what the validator
+will not.
 
 ### App Store images
 
