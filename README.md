@@ -327,6 +327,19 @@ a blank screen with nothing anywhere to explain them. That is what `/diagnostics
 trace buffer are for: they located every defect found on real hardware here, after several
 plausible readings of the documentation had pointed at the wrong cause.
 
+## Support ❤️
+
+This app is free, and built on my own time — evenings spent making cameras, snapshots and
+detections behave the same way whatever is behind them. If it puts a live picture on your
+Homey when it matters, you can support the work:
+
+- ☕ Buy me a coffee: https://buymeacoffee.com/byackee
+- 🔗 All my links: https://linktr.ee/byackee
+
+Opening an issue with your camera, your Scrypted plugin and the diagnostics output helps
+just as much — every setup that lands here makes the next one work out of the box. Thank
+you for using it, and for every bit of support 🙏
+
 ## Licence
 
 MIT
