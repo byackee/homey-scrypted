@@ -38,6 +38,21 @@ const DEFAULT_TRIGGER_COOLDOWN_SECONDS = 10;
  */
 const BELOW_THRESHOLD_TRACE_MS = 10_000;
 
+/**
+ * How many WebRTC sessions one camera may hold open at once.
+ *
+ * A camera watched from a phone, a tablet and the web app at the same time is realistic;
+ * dozens are not, and would mean sessions nobody is watching. See `rememberRtcSession`.
+ */
+const MAX_RTC_SESSIONS = 4;
+
+/** The handle Scrypted returns for a live signalling session. */
+interface RtcControl {
+  endSession(): Promise<void>;
+  extendSession?(): Promise<void>;
+  getRefreshAt?(): Promise<number | void>;
+}
+
 /** Mirrors `asNumber` in capabilityMap: anything that is not a real number is not a number. */
 function finiteOr(value: unknown, fallback: number): number {
   const parsed = Number(value);
@@ -80,8 +95,14 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    *
    * Held so a keep-alive can reach the right one and so teardown can close them: a session
    * left open holds a rebroadcast on the camera long after the viewer walked away.
+   *
+   * Bounded, because nothing tells this app that a viewer closed a stream — Homey's Videos
+   * API offers a keep-alive but no "ended" callback. Without a cap the map would grow by one
+   * multi-kilobyte SDP key per play, for the life of the app, and hold every rebroadcast
+   * open on the camera with it. The oldest is closed when a new one arrives beyond the cap,
+   * which is also the only signal available that it is no longer being watched.
    */
-  private readonly rtcControls = new Map<string, { endSession(): Promise<void> } | undefined>();
+  private readonly rtcControls = new Map<string, RtcControl | undefined>();
 
   /** The tile showing the thumbnail of the last recorded detection. See `setupEventImage`. */
   private eventImage: unknown = null;
@@ -395,12 +416,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       }
 
       const session = new HomeyOfferSession(offerSdp);
-      let control: { endSession(): Promise<void> } | undefined;
+      let control: RtcControl | undefined;
 
       try {
         // Started before the wait, and the wait is what produces the answer: Scrypted calls
         // back into the session while this promise is still in flight.
-        control = await device.startRTCSignalingSession(session) as typeof control;
+        control = await device.startRTCSignalingSession(session) as RtcControl | undefined;
         const answerSdp = await session.waitForAnswer();
 
         if (session.ignoredCandidates) {
@@ -410,7 +431,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
           this.trace(`webrtc: ${session.ignoredCandidates} late ICE candidate(s) discarded`);
         }
 
-        this.rtcControls.set(offerSdp, control);
+        this.rememberRtcSession(offerSdp, control);
         return { answerSdp, streamId: offerSdp };
       } catch (err) {
         // A session that opened and then failed to answer still holds resources on the
@@ -422,11 +443,38 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     });
 
     video.registerKeepAliveListener(async (streamId: string) => {
-      const control = this.rtcControls.get(streamId) as { extendSession?(): Promise<void> } | undefined;
+      const control = this.rtcControls.get(streamId);
+      // Re-inserted so the cap treats a stream someone is still watching as the newest,
+      // rather than evicting it because it started first.
+      if (control) {
+        this.rtcControls.delete(streamId);
+        this.rtcControls.set(streamId, control);
+      }
       await control?.extendSession?.().catch(() => undefined);
     });
 
     await setCameraVideo(this, 'main', 'Live', video);
+  }
+
+  /**
+   * Stores a session and closes whatever fell off the end.
+   *
+   * Insertion order is what makes this work: a `Map` iterates oldest-first, and the
+   * keep-alive re-inserts a live stream so age here means "longest since anyone said they
+   * were still watching", not "opened longest ago".
+   */
+  private rememberRtcSession(streamId: string, control: RtcControl | undefined): void {
+    this.rtcControls.set(streamId, control);
+
+    while (this.rtcControls.size > MAX_RTC_SESSIONS) {
+      const oldest = this.rtcControls.keys().next();
+      if (oldest.done) break;
+
+      const stale = this.rtcControls.get(oldest.value);
+      this.rtcControls.delete(oldest.value);
+      this.trace('webrtc: closing the least recently kept-alive session');
+      void stale?.endSession().catch(() => undefined);
+    }
   }
 
   private async resolveStreamUrl(): Promise<string> {
