@@ -23,6 +23,12 @@ const DEFAULT_RESET_SECONDS = 30;
 const DEFAULT_MIN_SCORE = 0.5;
 const DEFAULT_TRIGGER_COOLDOWN_SECONDS = 10;
 
+/** Mirrors `asNumber` in capabilityMap: anything that is not a real number is not a number. */
+function finiteOr(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 interface CameraSettings {
   detection_reset_seconds: number;
   detection_min_score: number;
@@ -54,6 +60,9 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   /** Rate-limits the two expensive effects of a detection: the frame fetch and the trigger. */
   private readonly throttle = new DetectionThrottle();
 
+  /** When the "nothing qualified" diagnostic line was last written. See `traceBelowThreshold`. */
+  private lastBelowThresholdTrace = Number.NEGATIVE_INFINITY;
+
   /** Detection classes seen on this camera, used to decide which alarms to expose. */
   private detectionCapabilities = new Set<string>();
 
@@ -62,8 +71,11 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     return {
       detection_reset_seconds: Number(raw.detection_reset_seconds ?? DEFAULT_RESET_SECONDS),
       detection_min_score: Number(raw.detection_min_score ?? DEFAULT_MIN_SCORE),
-      detection_trigger_cooldown: Number(
-        raw.detection_trigger_cooldown ?? DEFAULT_TRIGGER_COOLDOWN_SECONDS),
+      // Finite-checked, unlike its neighbours: a stored value that coerces to NaN would
+      // reach the throttle as a NaN cooldown, and the whole limit exists to survive being
+      // handed a bad number rather than quietly reverting to no limit at all.
+      detection_trigger_cooldown: finiteOr(
+        raw.detection_trigger_cooldown, DEFAULT_TRIGGER_COOLDOWN_SECONDS),
       stream_destination: (raw.stream_destination ?? 'remote') as MediaStreamDestination,
     };
   }
@@ -328,15 +340,16 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     const cooldownMs = Math.max(0, cooldown) * 1000;
     const now = Date.now();
 
-    // Alarms first, and for every event. They are cheap — a write that would not change the
-    // value is skipped — and their auto-clear countdown has to restart on each frame, which
-    // is what keeps the alarm continuously true for as long as the activity lasts.
     const raisedAlarms = new Set<string>();
     /** Every group in this event, throttled or not: the summary capability reflects all of them. */
     const seenGroups = new Set<string>();
     /** The groups allowed to pay for a frame fetch and a Flow trigger this time round. */
     const admittedGroups: { group: string; className: string; label?: string; score: number }[] = [];
 
+    // Alarms are raised inside this loop for every event, deliberately outside the throttle
+    // below. They are cheap — a write that would not change the value is skipped — and
+    // their auto-clear countdown has to restart on each frame, which is what keeps an alarm
+    // continuously true for as long as the activity lasts.
     for (const detection of detections) {
       const className = String(detection.className ?? '').toLowerCase();
       if (!className || (detection.score ?? 0) < minScore) continue;
@@ -369,6 +382,10 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       });
     }
 
+    // Re-checked after the awaits above, like every other post-await write in this file:
+    // teardown may have landed while the alarms were being raised.
+    if (this.resources.isReleased) return;
+
     // The summary is a plain capability write, guarded against writing an unchanged value,
     // so it stays honest about what is in view even while the triggers are held back.
     if (seenGroups.size && this.hasCapability('scrypted_detection')) {
@@ -378,7 +395,15 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       }
     }
 
-    if (!admittedGroups.length) return;
+    if (!admittedGroups.length) {
+      // Nothing qualified at all — as opposed to qualifying and being held back. "My Flow
+      // never fires" is the question this buffer exists to answer, and before the throttle
+      // the unfiltered detection line was what showed a user their score threshold sat
+      // above what their camera actually reports. Rate-limited on its own clock so it
+      // cannot flood the way the old unconditional trace did.
+      if (!seenGroups.size) this.traceBelowThreshold(detections, minScore, cooldownMs, now);
+      return;
+    }
 
     // Traced only for admitted detections. Tracing every one filled the 200-line diagnostics
     // buffer with a fraction of a second of a single camera, which is precisely when the
@@ -401,6 +426,26 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       await this.triggerObjectDetected(
         admitted.group, admitted.className, admitted.label, admitted.score);
     }
+  }
+
+  /**
+   * Records why an event reached no Flow, at most once per cooldown.
+   *
+   * Kept off `DetectionThrottle` so a diagnostic line cannot occupy a slot in the map that
+   * decides what actually fires, and so its clock is independent of any object group.
+   */
+  private traceBelowThreshold(
+    detections: ObjectsDetected['detections'],
+    minScore: number,
+    cooldownMs: number,
+    now: number,
+  ): void {
+    const elapsed = now - this.lastBelowThresholdTrace;
+    if (cooldownMs > 0 && elapsed >= 0 && elapsed < cooldownMs) return;
+    this.lastBelowThresholdTrace = now;
+
+    this.trace(`no trigger, min score ${minScore}: ${JSON.stringify(
+      (detections ?? []).map(d => ({ c: d.className, s: d.score })))}`);
   }
 
   private async fetchDetectionFrame(

@@ -22,7 +22,13 @@
  */
 export class DetectionThrottle {
 
-  /** Monotonic timestamp of the last admitted trigger, per detection group. */
+  /**
+   * When each group last had a trigger admitted, on the caller's clock.
+   *
+   * Deliberately not described as monotonic: the caller reads `Date.now()`, which an NTP
+   * correction can move backwards. `admit` handles that rather than pretending it cannot
+   * happen.
+   */
   private readonly lastAdmitted = new Map<string, number>();
 
   /**
@@ -40,7 +46,23 @@ export class DetectionThrottle {
     if (cooldownMs <= 0) return true;
 
     const last = this.lastAdmitted.get(group);
-    if (last !== undefined && now - last < cooldownMs) return false;
+    if (last !== undefined) {
+      const elapsed = now - last;
+
+      // A clock that went backwards counts as a forgotten stamp. `now` is wall clock, and
+      // an NTP correction larger than the cooldown would otherwise refuse every event in
+      // the group until real time caught up — losing genuine detections for far longer
+      // than the delay the user asked for.
+      const rewound = elapsed < 0;
+
+      // Stated positively on purpose. Written as `elapsed < cooldownMs`, a cooldown that is
+      // NaN makes the comparison false and falls through to admitting every event — the
+      // flood this class exists to stop, restored silently. Here NaN fails the test and the
+      // event is refused instead, which is the safe direction to fail in.
+      const elapsedEnough = elapsed >= cooldownMs;
+
+      if (!rewound && !elapsedEnough) return false;
+    }
 
     this.lastAdmitted.set(group, now);
     return true;

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import { detectionGroupFor } from '../lib/capabilityMap.mjs';
 import { DetectionThrottle } from '../lib/detectionThrottle.mjs';
 
 /**
@@ -62,6 +63,20 @@ describe('DetectionThrottle', () => {
     assert.equal(throttle.size, 3);
   });
 
+  it('shares one cooldown across the classes that collapse onto the same group', () => {
+    const throttle = new DetectionThrottle();
+
+    // The Flow card offers groups, not raw classes, so a car and a truck are the same
+    // trigger. Throttling them separately would fire it twice for one vehicle passing.
+    assert.equal(detectionGroupFor('car'), 'vehicle');
+    assert.equal(detectionGroupFor('truck'), 'vehicle');
+
+    assert.equal(throttle.admit(detectionGroupFor('car'), 10_000, 0), true);
+    assert.equal(throttle.admit(detectionGroupFor('truck'), 10_000, 1), false);
+    assert.equal(throttle.admit(detectionGroupFor('bus'), 10_000, 2), false);
+    assert.equal(throttle.size, 1, 'one stamp for the whole group, not one per class');
+  });
+
   it('admits everything when the cooldown is zero', () => {
     const throttle = new DetectionThrottle();
 
@@ -75,6 +90,31 @@ describe('DetectionThrottle', () => {
     const throttle = new DetectionThrottle();
     assert.equal(throttle.admit('person', -1, 0), true);
     assert.equal(throttle.admit('person', -1, 0), true);
+  });
+
+  it('treats a clock that went backwards as a forgotten stamp', () => {
+    const throttle = new DetectionThrottle();
+
+    // `now` is wall clock — the caller reads Date.now() — so an NTP correction can move it
+    // back. Without this, a jump larger than the cooldown refuses every event in the group
+    // until real time catches up, losing genuine detections for the length of the jump.
+    assert.equal(throttle.admit('person', 10_000, 500_000), true);
+    assert.equal(throttle.admit('person', 10_000, 380_000), true, 'clock rewound by 2 minutes');
+
+    // And the rewound moment becomes the new reference, rather than the future one.
+    assert.equal(throttle.admit('person', 10_000, 385_000), false);
+    assert.equal(throttle.admit('person', 10_000, 390_000), true);
+  });
+
+  it('refuses rather than admits when handed a cooldown that is not a number', () => {
+    const throttle = new DetectionThrottle();
+
+    // The caller guards against this, but the failure direction matters: written as
+    // `elapsed < cooldownMs`, a NaN comparison is false and every event is admitted —
+    // silently restoring the 500-per-second flood this class exists to stop.
+    assert.equal(throttle.admit('person', Number.NaN, 0), true, 'nothing to compare against yet');
+    assert.equal(throttle.admit('person', Number.NaN, 1), false);
+    assert.equal(throttle.admit('person', Number.NaN, 10_000_000), false);
   });
 
   it('forgets its stamps on clear, so the first detection after a reconnect fires', () => {
