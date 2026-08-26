@@ -202,13 +202,29 @@ describe('hasRecentDetection', () => {
     assert.equal(hasRecentDetection(clips, 'person', now, 60_000), false);
   });
 
-  it('does not let a duration running into the future match every window', () => {
-    // A clip still being written can be stamped as ending after `now`.
+  it('counts a recording whose end has not arrived yet', () => {
     const clips = [clip({ startTime: now - 600_000, duration: 3_600_000, detectionClasses: ['person'] })];
     assert.equal(hasRecentDetection(clips, 'person', now, 60_000), true, 'it is still running');
+  });
 
+  it('treats an unusable duration as zero rather than guessing', () => {
     const stale = [clip({ startTime: now - 600_000, duration: Number.NaN, detectionClasses: ['person'] })];
-    assert.equal(hasRecentDetection(stale, 'person', now, 60_000), false, 'an unusable duration is zero');
+    assert.equal(hasRecentDetection(stale, 'person', now, 60_000), false);
+  });
+
+  it('does not let a negative duration hide a detection that did happen', () => {
+    // Found by mutation: dropping `Math.max(0, ·)` broke nothing. It changes the answer —
+    // a duration of -50 s pushes the end *before* the start, so a clip from 30 s ago reads
+    // as 80 s old and falls outside a one-minute window.
+    const clips = [clip({ startTime: now - 30_000, duration: -50_000, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(clips, 'person', now, 60_000), true);
+  });
+
+  it('will not let a runaway duration pin the condition to true for ever', () => {
+    // A recorder indexing continuous recording as one long segment would otherwise satisfy
+    // every window regardless of what is in front of the camera.
+    const clips = [clip({ startTime: now - 86_400_000, duration: 864_000_000, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(clips, 'person', now, 60_000), false, 'a day old is not "now"');
   });
 
   it('ignores an event stamped in the future', () => {

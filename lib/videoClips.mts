@@ -8,6 +8,15 @@ export const DEFAULT_CLIP_LOOKBACK_MS = 6 * 60 * 60_000;
 const MOTION_CLASS = 'motion';
 
 /**
+ * The longest a clip is treated as still running. See `hasRecentDetection`.
+ *
+ * Measured clips here are about thirty seconds. The cap exists for a recorder that indexes
+ * continuous recording as long segments carrying detection classes, where an open-ended
+ * segment would satisfy every window for ever and pin a condition to `true`.
+ */
+const MAX_CLIP_DURATION_MS = 60 * 60_000;
+
+/**
  * Asking Scrypted for clips is a query, not a subscription, so every caller has to choose a
  * window.
  *
@@ -95,7 +104,8 @@ export function selectLatestObjectClip(
  * seconds and can run longer, so a condition asking about the last minute would otherwise
  * miss someone who is still standing in front of the camera: a clip that started 70 seconds
  * ago and lasts 90 covers this very moment. The window the user set means "was it there",
- * not "did it arrive".
+ * not "did it arrive". A reported duration is capped at `MAX_CLIP_DURATION_MS` so that
+ * "still running" cannot become "always".
  *
  * A clip stamped in the future is ignored rather than counted: a camera whose clock runs
  * ahead would otherwise satisfy every window forever.
@@ -112,9 +122,20 @@ export function hasRecentDetection(
     if (!Number.isFinite(clip.startTime)) return false;
     if (clip.startTime > now) return false;
 
-    // Clamped to `now`: a clip still being written can end in the future, and letting that
-    // through would make the elapsed time negative and match any window at all.
-    const duration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration as number) : 0;
+    // Capped before it is used. A recorder that indexes continuous recording as long
+    // segments would otherwise answer `true` for ever: a segment whose nominal end is in
+    // the future satisfies every window, whatever is actually in front of the camera. These
+    // clips run about thirty seconds, so an hour is far outside anything real here and
+    // costs nothing. `Math.max(0, ·)` is the guard that matters — a negative duration would
+    // push the end *before* the start and hide a detection that did happen.
+    const reported = Number.isFinite(clip.duration) ? clip.duration as number : 0;
+    const duration = Math.min(MAX_CLIP_DURATION_MS, Math.max(0, reported));
+
+    // `Math.min(now, ·)` is inert for the comparison below, and deliberately kept anyway:
+    // both branches already agree. A nominal end in the future gives `now - now = 0`, and
+    // without the clamp it gives a negative number — and neither is greater than a window
+    // the guard above has already established is positive. It stays so that `endedAt` is a
+    // date that means something if anything else ever reads it, not because it guards this.
     const endedAt = Math.min(now, clip.startTime + duration);
     if (now - endedAt > windowMs) return false;
 

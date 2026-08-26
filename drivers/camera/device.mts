@@ -439,10 +439,9 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
         // `rtcControls` while it is still empty. Storing the control after that point puts
         // it in a map nothing will ever drain again, leaving the session and its rebroadcast
         // open on the camera until Scrypted's own refresh timeout notices.
-        if (this.resources.isReleased) {
-          await control?.endSession().catch(() => undefined);
-          throw new Error(this.homey.__('errors.not_connected'));
-        }
+        // Throwing is enough to close it: the catch below ends the session on the way out.
+        // Calling `endSession` here as well would just close it twice.
+        if (this.resources.isReleased) throw new Error(this.homey.__('errors.device_missing'));
 
         this.rememberRtcSession(offerSdp, control);
         return { answerSdp, streamId: offerSdp };
@@ -481,8 +480,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     // open a second session. A bare `set` would drop the first control without closing it —
     // and would not move the entry, so the newest stream would be the first evicted, since
     // `Map.set` on an existing key leaves its insertion position alone.
+    // `previous !== control` because the RPC layer caches remote proxies by id
+    // (`remoteWeakProxies` in `rpc.js`), so two sessions could in principle resolve to the
+    // same JavaScript object. Closing it here would then kill the stream that is about to
+    // be stored, at the moment it finished negotiating.
     const previous = this.rtcControls.get(streamId);
-    if (previous) void previous.endSession().catch(() => undefined);
+    if (previous && previous !== control) void previous.endSession().catch(() => undefined);
     this.rtcControls.delete(streamId);
 
     this.rtcControls.set(streamId, control);
