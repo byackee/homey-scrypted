@@ -21,7 +21,8 @@
     "offline": "Hors ligne dans Scrypted",
     "password_required": "Un mot de passe ou un jeton de connexion est requis.",
     "port_invalid": "Le port doit être un nombre entre 1 et 65535.",
-    "username_required": "Un nom d'utilisateur est requis."
+    "username_required": "Un nom d'utilisateur est requis.",
+    "no_recent_event": "Aucune détection enregistrée pour l'instant. L'enregistreur conserve les objets reconnus ; le simple mouvement n'est pas gardé comme événement récupérable."
   },
   "settings": {
     "title": "Scrypted",
@@ -32,5 +33,8 @@
     "disconnected": "Non connecté",
     "saved": "Enregistré et reconnecté.",
     "password_unchanged": "Laissez vide pour conserver le mot de passe enregistré."
+  },
+  "images": {
+    "last_event": "Dernière détection"
   }
 }

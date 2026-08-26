@@ -88,6 +88,39 @@
       ]
     },
     {
+      "id": "video_transport",
+      "type": "dropdown",
+      "label": {
+        "en": "Live stream transport",
+        "fr": "Transport du flux direct",
+        "nl": "Transport van de livestream"
+      },
+      "hint": {
+        "en": "RTSP hands Homey a rebroadcast URL and lets Homey's own proxy carry it outward, which repacks the stream on the way. WebRTC negotiates once with Scrypted and lets the media flow directly, removing that hop. WebRTC needs a camera exposing RTCSignalingChannel and is the newer path here — if the picture fails to start, switch back. Takes effect only when the app restarts: a stream already registered cannot be swapped while it is running.",
+        "fr": "RTSP fournit à Homey une URL de rediffusion que le proxy de Homey relaie, ce qui réempaquette le flux en chemin. WebRTC négocie une fois avec Scrypted et laisse le média circuler directement, ce qui supprime ce saut. WebRTC exige une caméra exposant RTCSignalingChannel et reste le chemin le plus récent ici : si l'image ne démarre pas, revenir en arrière. Ne prend effet qu'au redémarrage de l'app : un flux déjà enregistré ne peut pas être remplacé en cours de route.",
+        "nl": "RTSP geeft Homey een heruitzend-URL die de proxy van Homey doorgeeft, waarbij de stream onderweg opnieuw wordt ingepakt. WebRTC onderhandelt één keer met Scrypted en laat de media rechtstreeks stromen. WebRTC vereist een camera met RTCSignalingChannel en is hier het nieuwere pad: schakel terug als het beeld niet start. Werkt pas na een herstart van de app: een al geregistreerde stream kan niet tijdens het draaien worden vervangen."
+      },
+      "value": "rtsp",
+      "values": [
+        {
+          "id": "rtsp",
+          "label": {
+            "en": "RTSP through Homey's proxy",
+            "fr": "RTSP via le proxy Homey",
+            "nl": "RTSP via de proxy van Homey"
+          }
+        },
+        {
+          "id": "webrtc",
+          "label": {
+            "en": "WebRTC, negotiated directly",
+            "fr": "WebRTC, négocié directement",
+            "nl": "WebRTC, rechtstreeks onderhandeld"
+          }
+        }
+      ]
+    },
+    {
       "id": "detection_reset_seconds",
       "type": "number",
       "label": {
@@ -144,6 +177,26 @@
       "min": 0,
       "max": 1,
       "step": 0.05
+    },
+    {
+      "id": "event_lookback_hours",
+      "type": "number",
+      "label": {
+        "en": "Event history window",
+        "fr": "Fenêtre d'historique",
+        "nl": "Venster voor gebeurtenissen"
+      },
+      "hint": {
+        "en": "How far back the \"Last detection\" tile looks for a recorded event. A camera can hold weeks of them, so the query is bounded rather than asking for everything.",
+        "fr": "Sur quelle profondeur la tuile « Dernière détection » cherche un événement enregistré. Une caméra peut en conserver des semaines : la requête est bornée plutôt que de tout demander.",
+        "nl": "Hoe ver de tegel \"Laatste detectie\" terugkijkt naar een opgenomen gebeurtenis. Een camera kan er weken bewaren, dus de opvraag is begrensd."
+      },
+      "value": 6,
+      "min": 1,
+      "max": 168,
+      "units": {
+        "en": "h"
+      }
     }
   ]
 }
