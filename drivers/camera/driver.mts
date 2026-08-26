@@ -26,6 +26,14 @@ export default class CameraDriver extends BaseScryptedDriver {
         await args.device.refreshSnapshot();
       });
 
+    this.homey.flow
+      .getConditionCard('detected_recently')
+      .registerRunListener(async (args: {
+        device: ScryptedCameraDevice;
+        detection_class?: string;
+        minutes?: number;
+      }) => args.device.wasDetectedRecently(args.detection_class ?? 'any', Number(args.minutes ?? 5)));
+
     this.trace('flow cards registered');
   }
 }

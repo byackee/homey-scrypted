@@ -252,6 +252,112 @@
         ]
       }
     ],
+    "conditions": [
+      {
+        "id": "detected_recently",
+        "title": {
+          "en": "Something was recorded recently",
+          "fr": "Quelque chose a été enregistré récemment",
+          "nl": "Er is onlangs iets opgenomen"
+        },
+        "titleFormatted": {
+          "en": "!{{Recorded|Did not record}} [[detection_class]] in the last [[minutes]] minutes",
+          "fr": "A !{{enregistré|pas enregistré}} [[detection_class]] dans les [[minutes]] dernières minutes",
+          "nl": "Heeft [[detection_class]] de laatste [[minutes]] minuten !{{opgenomen|niet opgenomen}}"
+        },
+        "hint": {
+          "en": "Asks the recorder what it has stored, not this app's own memory, so it still answers correctly after a restart and covers time before the camera was added. Only recognised objects are recorded with a retrievable event; plain motion is not.",
+          "fr": "Interroge l'enregistreur sur ce qu'il a stocké, et non la mémoire de cette app : la réponse reste juste après un redémarrage et couvre la période antérieure à l'ajout de la caméra. Seuls les objets reconnus sont enregistrés comme événement récupérable, pas le simple mouvement.",
+          "nl": "Vraagt de recorder wat hij heeft opgeslagen, niet het geheugen van deze app, dus het antwoord klopt ook na een herstart en dekt de tijd voordat de camera werd toegevoegd. Alleen herkende objecten worden als opvraagbare gebeurtenis opgeslagen, gewone beweging niet."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=camera"
+          },
+          {
+            "name": "detection_class",
+            "type": "dropdown",
+            "title": {
+              "en": "Object",
+              "fr": "Objet",
+              "nl": "Object"
+            },
+            "values": [
+              {
+                "id": "any",
+                "title": {
+                  "en": "Any object",
+                  "fr": "N'importe quel objet",
+                  "nl": "Elk object"
+                }
+              },
+              {
+                "id": "person",
+                "title": {
+                  "en": "Person",
+                  "fr": "Personne",
+                  "nl": "Persoon"
+                }
+              },
+              {
+                "id": "vehicle",
+                "title": {
+                  "en": "Vehicle",
+                  "fr": "Véhicule",
+                  "nl": "Voertuig"
+                }
+              },
+              {
+                "id": "animal",
+                "title": {
+                  "en": "Animal",
+                  "fr": "Animal",
+                  "nl": "Dier"
+                }
+              },
+              {
+                "id": "package",
+                "title": {
+                  "en": "Package",
+                  "fr": "Colis",
+                  "nl": "Pakket"
+                }
+              },
+              {
+                "id": "face",
+                "title": {
+                  "en": "Face",
+                  "fr": "Visage",
+                  "nl": "Gezicht"
+                }
+              },
+              {
+                "id": "motion",
+                "title": {
+                  "en": "Motion",
+                  "fr": "Mouvement",
+                  "nl": "Beweging"
+                }
+              }
+            ]
+          },
+          {
+            "name": "minutes",
+            "type": "number",
+            "min": 1,
+            "max": 1440,
+            "value": 5,
+            "title": {
+              "en": "Minutes",
+              "fr": "Minutes",
+              "nl": "Minuten"
+            }
+          }
+        ]
+      }
+    ],
     "actions": [
       {
         "id": "take_snapshot",
@@ -366,6 +472,39 @@
           ]
         },
         {
+          "id": "video_transport",
+          "type": "dropdown",
+          "label": {
+            "en": "Live stream transport",
+            "fr": "Transport du flux direct",
+            "nl": "Transport van de livestream"
+          },
+          "hint": {
+            "en": "RTSP hands Homey a rebroadcast URL and lets Homey's own proxy carry it outward, which repacks the stream on the way. WebRTC negotiates once with Scrypted and lets the media flow directly, removing that hop. WebRTC needs a camera exposing RTCSignalingChannel and is the newer path here — if the picture fails to start, switch back. Applies the next time the app restarts or the camera reconnects.",
+            "fr": "RTSP fournit à Homey une URL de rediffusion que le proxy de Homey relaie, ce qui réempaquette le flux en chemin. WebRTC négocie une fois avec Scrypted et laisse le média circuler directement, ce qui supprime ce saut. WebRTC exige une caméra exposant RTCSignalingChannel et reste le chemin le plus récent ici : si l'image ne démarre pas, revenir en arrière. S'applique au prochain redémarrage de l'app ou à la reconnexion de la caméra.",
+            "nl": "RTSP geeft Homey een heruitzend-URL die de proxy van Homey doorgeeft, waarbij de stream onderweg opnieuw wordt ingepakt. WebRTC onderhandelt één keer met Scrypted en laat de media rechtstreeks stromen. WebRTC vereist een camera met RTCSignalingChannel en is hier het nieuwere pad: schakel terug als het beeld niet start. Werkt vanaf de volgende herstart van de app of herverbinding van de camera."
+          },
+          "value": "rtsp",
+          "values": [
+            {
+              "id": "rtsp",
+              "label": {
+                "en": "RTSP through Homey's proxy",
+                "fr": "RTSP via le proxy Homey",
+                "nl": "RTSP via de proxy van Homey"
+              }
+            },
+            {
+              "id": "webrtc",
+              "label": {
+                "en": "WebRTC, negotiated directly",
+                "fr": "WebRTC, négocié directement",
+                "nl": "WebRTC, rechtstreeks onderhandeld"
+              }
+            }
+          ]
+        },
+        {
           "id": "detection_reset_seconds",
           "type": "number",
           "label": {
@@ -422,6 +561,26 @@
           "min": 0,
           "max": 1,
           "step": 0.05
+        },
+        {
+          "id": "event_lookback_hours",
+          "type": "number",
+          "label": {
+            "en": "Event history window",
+            "fr": "Fenêtre d'historique",
+            "nl": "Venster voor gebeurtenissen"
+          },
+          "hint": {
+            "en": "How far back the \"Last detection\" tile looks for a recorded event. A camera can hold weeks of them, so the query is bounded rather than asking for everything.",
+            "fr": "Sur quelle profondeur la tuile « Dernière détection » cherche un événement enregistré. Une caméra peut en conserver des semaines : la requête est bornée plutôt que de tout demander.",
+            "nl": "Hoe ver de tegel \"Laatste detectie\" terugkijkt naar een opgenomen gebeurtenis. Een camera kan er weken bewaren, dus de opvraag is begrensd."
+          },
+          "value": 6,
+          "min": 1,
+          "max": 168,
+          "units": {
+            "en": "h"
+          }
         }
       ],
       "id": "camera"

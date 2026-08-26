@@ -1,7 +1,10 @@
 import sourceMapSupport from 'source-map-support';
 import Homey from 'homey';
+import { ScryptedMimeTypes } from '@scrypted/types';
+import type { MediaStreamUrl, VideoClip } from '@scrypted/types';
 import { ScryptedHub } from './lib/ScryptedHub.mjs';
 import { typesForDriver, type DriverId } from './lib/deviceTypeMap.mjs';
+import { clipQuery, isObjectClip, selectLatestObjectClip, thumbnailIdOf } from './lib/videoClips.mjs';
 import type { ScryptedConfig } from './lib/types.mjs';
 
 sourceMapSupport.install();
@@ -113,7 +116,7 @@ export default class ScryptedApp extends Homey.App {
    * Add ?video=1 to also resolve each camera's stream URL.
    */
   async getDiagnostics(
-    options: { video?: boolean; plugins?: boolean } = {},
+    options: { video?: boolean; plugins?: boolean; clips?: boolean } = {},
   ): Promise<unknown> {
     const client = await this.hub.getClient();
     const state = client.systemManager.getSystemState();
@@ -143,6 +146,7 @@ export default class ScryptedApp extends Homey.App {
       // Opt-in: resolving a stream URL asks Scrypted to start the stream, which a
       // diagnostics read should not do by itself.
       videoProbe: options.video ? await this.probeVideo() : 'pass ?video=1 to probe streams',
+      clipProbe: options.clips ? await this.probeClips() : 'pass ?clips=1 to probe recorded clips',
       pairedDevices: this.describePairedDevices(),
       plugins: options.plugins ? await this.probePlugins() : undefined,
       traces: this.traces,
@@ -200,6 +204,87 @@ export default class ScryptedApp extends Homey.App {
       });
     }
     return rows;
+  }
+
+  /**
+   * What the recorder actually holds for each camera.
+   *
+   * The distinction this reports is the one that decides the feature: an event carrying an
+   * object class returns a thumbnail, while one whose only class is `motion` does not, and
+   * video returns for neither on an NVR that indexes events without retaining footage.
+   * "No recent event" and "the recorder keeps nothing" look identical from the tile, and
+   * this is what tells them apart. Read-only: listing events starts nothing on the camera.
+   */
+  private async probeClips(): Promise<unknown[]> {
+    const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);
+    const results: unknown[] = [];
+
+    for (const camera of cameras) {
+      const entry: Record<string, unknown> = { name: camera.name, id: camera.id };
+      try {
+        if (!camera.interfaces.includes('VideoClips')) {
+          entry.error = 'no VideoClips interface';
+          results.push(entry);
+          continue;
+        }
+
+        const device = await this.hub.getDevice(camera.id);
+        if (!device || typeof device.getVideoClips !== 'function') {
+          entry.error = 'interface declared but getVideoClips is missing';
+          results.push(entry);
+          continue;
+        }
+
+        const clips: VideoClip[] = await device.getVideoClips(clipQuery(Date.now())) ?? [];
+        entry.total = clips.length;
+        entry.objectEvents = clips.filter(isObjectClip).length;
+        entry.motionOnly = clips.length - clips.filter(isObjectClip).length;
+        entry.classes = [...new Set(clips.flatMap(c => c.detectionClasses ?? []))];
+
+        const latest = selectLatestObjectClip(clips);
+        entry.latestObjectEvent = latest
+          ? {
+            startedAt: new Date(latest.startTime).toISOString(),
+            ageSeconds: Math.round((Date.now() - latest.startTime) / 1000),
+            classes: latest.detectionClasses,
+            durationMs: latest.duration,
+          }
+          : 'none in the query window';
+
+        // Fetched exactly the way the tile does, so a working probe means a working tile.
+        const thumbnailId = thumbnailIdOf(latest);
+        if (thumbnailId && typeof device.getVideoClipThumbnail === 'function') {
+          try {
+            const media = await device.getVideoClipThumbnail(thumbnailId);
+            const mediaManager = await this.hub.getMediaManager();
+            const buffer = await mediaManager.convertMediaObjectToBuffer(media, 'image/jpeg');
+            entry.thumbnailBytes = buffer?.length;
+          } catch (err) {
+            entry.thumbnailError = (err as Error).message.split('\n')[0];
+          }
+        }
+
+        // Reported, not used. If a future NVR configuration starts serving footage this is
+        // where it will show up first, and the tile can then be extended rather than guessed at.
+        if (latest && typeof device.getVideoClip === 'function') {
+          try {
+            const media = await device.getVideoClip(latest.videoId ?? latest.id);
+            const mediaManager = await this.hub.getMediaManager();
+            const resolved = await mediaManager.convertMediaObjectToJSON<MediaStreamUrl>(
+              media, ScryptedMimeTypes.MediaStreamUrl);
+            entry.videoUrl = maskCredentials(resolved?.url);
+            entry.videoContainer = resolved?.container;
+          } catch (err) {
+            entry.videoError = (err as Error).message.split('\n')[0];
+          }
+        }
+      } catch (err) {
+        entry.error = (err as Error).message;
+      }
+      results.push(entry);
+    }
+
+    return results;
   }
 
   private async probeVideo(): Promise<unknown[]> {

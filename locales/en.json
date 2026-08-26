@@ -21,7 +21,8 @@
     "offline": "Offline in Scrypted",
     "password_required": "A password or login token is required.",
     "port_invalid": "The port must be a number between 1 and 65535.",
-    "username_required": "A username is required."
+    "username_required": "A username is required.",
+    "no_recent_event": "No recorded detection yet. The recorder stores recognised objects; plain motion is not kept as a retrievable event."
   },
   "settings": {
     "title": "Scrypted",
@@ -32,5 +33,8 @@
     "disconnected": "Not connected",
     "saved": "Saved and reconnected.",
     "password_unchanged": "Leave blank to keep the stored password."
+  },
+  "images": {
+    "last_event": "Last detection"
   }
 }

@@ -173,5 +173,106 @@
         "nl": "Haalt een nieuw stilstaand beeld op en werkt de momentopname bij."
       }
     }
+  ],
+  "conditions": [
+    {
+      "id": "detected_recently",
+      "title": {
+        "en": "Something was recorded recently",
+        "fr": "Quelque chose a été enregistré récemment",
+        "nl": "Er is onlangs iets opgenomen"
+      },
+      "titleFormatted": {
+        "en": "!{{Recorded|Did not record}} [[detection_class]] in the last [[minutes]] minutes",
+        "fr": "A !{{enregistré|pas enregistré}} [[detection_class]] dans les [[minutes]] dernières minutes",
+        "nl": "Heeft [[detection_class]] de laatste [[minutes]] minuten !{{opgenomen|niet opgenomen}}"
+      },
+      "hint": {
+        "en": "Asks the recorder what it has stored, not this app's own memory, so it still answers correctly after a restart and covers time before the camera was added. Only recognised objects are recorded with a retrievable event; plain motion is not.",
+        "fr": "Interroge l'enregistreur sur ce qu'il a stocké, et non la mémoire de cette app : la réponse reste juste après un redémarrage et couvre la période antérieure à l'ajout de la caméra. Seuls les objets reconnus sont enregistrés comme événement récupérable, pas le simple mouvement.",
+        "nl": "Vraagt de recorder wat hij heeft opgeslagen, niet het geheugen van deze app, dus het antwoord klopt ook na een herstart en dekt de tijd voordat de camera werd toegevoegd. Alleen herkende objecten worden als opvraagbare gebeurtenis opgeslagen, gewone beweging niet."
+      },
+      "args": [
+        {
+          "name": "detection_class",
+          "type": "dropdown",
+          "title": {
+            "en": "Object",
+            "fr": "Objet",
+            "nl": "Object"
+          },
+          "values": [
+            {
+              "id": "any",
+              "title": {
+                "en": "Any object",
+                "fr": "N'importe quel objet",
+                "nl": "Elk object"
+              }
+            },
+            {
+              "id": "person",
+              "title": {
+                "en": "Person",
+                "fr": "Personne",
+                "nl": "Persoon"
+              }
+            },
+            {
+              "id": "vehicle",
+              "title": {
+                "en": "Vehicle",
+                "fr": "Véhicule",
+                "nl": "Voertuig"
+              }
+            },
+            {
+              "id": "animal",
+              "title": {
+                "en": "Animal",
+                "fr": "Animal",
+                "nl": "Dier"
+              }
+            },
+            {
+              "id": "package",
+              "title": {
+                "en": "Package",
+                "fr": "Colis",
+                "nl": "Pakket"
+              }
+            },
+            {
+              "id": "face",
+              "title": {
+                "en": "Face",
+                "fr": "Visage",
+                "nl": "Gezicht"
+              }
+            },
+            {
+              "id": "motion",
+              "title": {
+                "en": "Motion",
+                "fr": "Mouvement",
+                "nl": "Beweging"
+              }
+            }
+          ]
+        },
+        {
+          "name": "minutes",
+          "type": "number",
+          "min": 1,
+          "max": 1440,
+          "value": 5,
+          "title": {
+            "en": "Minutes",
+            "fr": "Minutes",
+            "nl": "Minuten"
+          }
+        }
+      ]
+    }
   ]
 }

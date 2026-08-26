@@ -23,6 +23,7 @@ export default {
     return (homey.app as ScryptedApp).getDiagnostics({
       video: query.video === '1',
       plugins: query.plugins === '1',
+      clips: query.clips === '1',
     });
   },
 

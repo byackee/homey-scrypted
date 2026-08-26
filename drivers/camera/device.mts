@@ -13,6 +13,13 @@ import {
 } from '../../lib/capabilityMap.mjs';
 import { DetectionThrottle } from '../../lib/detectionThrottle.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
+import { HomeyOfferSession } from '../../lib/webrtcBridge.mjs';
+import {
+  clipQuery,
+  hasRecentDetection,
+  selectLatestObjectClip,
+  thumbnailIdOf,
+} from '../../lib/videoClips.mjs';
 import { isLoopbackUrl, rewriteLoopbackHost } from '../../lib/streamUrl.mjs';
 import type { AnyScryptedDevice } from '../../lib/types.mjs';
 
@@ -68,6 +75,17 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   /** Rate-limits the two expensive effects of a detection: the frame fetch and the trigger. */
   private readonly throttle = new DetectionThrottle();
 
+  /**
+   * Live WebRTC sessions, keyed by the offer that opened them.
+   *
+   * Held so a keep-alive can reach the right one and so teardown can close them: a session
+   * left open holds a rebroadcast on the camera long after the viewer walked away.
+   */
+  private readonly rtcControls = new Map<string, { endSession(): Promise<void> } | undefined>();
+
+  /** The tile showing the thumbnail of the last recorded detection. See `setupEventImage`. */
+  private eventImage: unknown = null;
+
   /** When the "nothing qualified" diagnostic line was last written. See `traceBelowThreshold`. */
   private lastBelowThresholdTrace = Number.NEGATIVE_INFINITY;
 
@@ -109,6 +127,15 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       this.lastDetectionFrame = null;
     });
 
+    // Registered alongside the timers, and for the same reason: a signalling session lives
+    // on the Scrypted side and outlives this device unless it is closed explicitly.
+    await this.resources.add('the WebRTC sessions', async () => {
+      for (const control of this.rtcControls.values()) {
+        await control?.endSession().catch(() => undefined);
+      }
+      this.rtcControls.clear();
+    });
+
     await super.onInit();
   }
 
@@ -129,7 +156,10 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       await this.setupSnapshot(device);
     }
     if (interfaces.includes(ScryptedInterface.VideoCamera)) {
-      await this.setupVideo();
+      await this.setupVideo(interfaces);
+    }
+    if (interfaces.includes(ScryptedInterface.VideoClips)) {
+      await this.setupEventImage();
     }
 
     // A detection arriving after a reconnect is news, whatever the clock says about one
@@ -207,6 +237,89 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     return buffer;
   }
 
+  // ------------------------------------------------------------------ recorded events
+
+  /**
+   * Registers the tile showing the last recorded detection.
+   *
+   * This is the recorder's own thumbnail, not a fresh frame: the NVR crops it to the object
+   * it recognised, and it keeps showing what actually triggered rather than whatever the
+   * camera happens to see now. The snapshot tile already covers "now".
+   *
+   * Only the thumbnail. Measured against this NVR, `getVideoClip` fails for every clip on
+   * every camera — "empty set during getRecordingForTime" for motion clips, "Conversion not
+   * supported" for object clips — because it indexes events without retaining their video.
+   * Offering a clip tile would offer one that never opens.
+   */
+  private async setupEventImage(): Promise<void> {
+    if (this.eventImage || this.resources.isReleased) return;
+
+    const image = await this.homey.images.createImage();
+    // Resolved per render, like the snapshot: the device proxy dies with the socket, and
+    // the newest event is a different one every time anyway.
+    image.setStream(async (stream: NodeJS.WritableStream) => {
+      const buffer = await this.fetchLatestEventThumbnail();
+      stream.end(buffer);
+    });
+
+    if (!await this.resources.add('the event image', async () => {
+      this.eventImage = null;
+      await image.unregister();
+    })) return;
+
+    this.eventImage = image;
+    await this.setCameraImage('event', this.homey.__('images.last_event'), image);
+  }
+
+  private async fetchLatestEventThumbnail(): Promise<Buffer> {
+    const device = this.scryptedDevice;
+    if (!device || typeof device.getVideoClips !== 'function') {
+      throw new Error(this.homey.__('errors.not_connected'));
+    }
+
+    const clips = await device.getVideoClips(clipQuery(Date.now(), this.eventLookbackMs));
+    const latest = selectLatestObjectClip(clips);
+    const thumbnailId = thumbnailIdOf(latest);
+
+    if (!thumbnailId || typeof device.getVideoClipThumbnail !== 'function') {
+      throw new Error(this.homey.__('errors.no_recent_event'));
+    }
+
+    const media = await device.getVideoClipThumbnail(thumbnailId);
+    const mediaManager = await this.hub.getMediaManager();
+    const buffer = await mediaManager.convertMediaObjectToBuffer(media, 'image/jpeg');
+
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      throw new Error(`Event thumbnail is ${Math.round(buffer.length / 1024 / 1024)} MB, over Homey's 5 MB limit.`);
+    }
+    return buffer;
+  }
+
+  /** How far back the event tile and the Flow condition look. Bounded by the query itself. */
+  private get eventLookbackMs(): number {
+    return finiteOr(this.getSettings()?.event_lookback_hours, 6) * 60 * 60_000;
+  }
+
+  /**
+   * Answers the "was something detected recently" Flow condition from the recorder's index
+   * rather than from this app's own state, so it survives an app restart and covers the
+   * period before the device was even paired.
+   */
+  async wasDetectedRecently(group: string, minutes: number): Promise<boolean> {
+    const device = this.scryptedDevice;
+    if (!device || typeof device.getVideoClips !== 'function') {
+      throw new Error(this.homey.__('errors.not_connected'));
+    }
+
+    const now = Date.now();
+    const windowMs = Math.max(1, finiteOr(minutes, 5)) * 60_000;
+    // Asked for exactly the window the condition cares about, so a camera holding weeks of
+    // events does not answer with all of them.
+    const clips = await device.getVideoClips(clipQuery(now, windowMs));
+
+    return hasRecentDetection(clips, group, now, windowMs);
+  }
+
   // ------------------------------------------------------------------ video
 
   /**
@@ -217,7 +330,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * stream in its own WebRTC proxy, which is what lets a LAN-only RTSP feed play in the
    * web app and away from home without this app doing any NAT traversal.
    */
-  private async setupVideo(): Promise<void> {
+  private async setupVideo(interfaces: string[]): Promise<void> {
     if (this.video || this.resources.isReleased) return;
 
     const videos = videosOf(this.homey);
@@ -226,7 +339,19 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       return;
     }
 
+    // WebRTC is opt-in rather than automatic. RTSP through Homey's proxy is what these
+    // cameras are known to play, and silently switching a working live view onto an
+    // untried path is not an upgrade. The setting says which the user asked for.
+    const wantsWebRTC = this.getSettings()?.video_transport === 'webrtc'
+      && interfaces.includes(ScryptedInterface.RTCSignalingChannel)
+      && typeof videos.createVideoWebRTC === 'function';
+
     try {
+      if (wantsWebRTC) {
+        await this.setupWebRTCVideo(videos);
+        return;
+      }
+
       const video = await videos.createVideoRTSP({ acceptInvalidCertificates: true });
       if (!await this.resources.add('the video stream', async () => {
         this.video = null;
@@ -241,6 +366,67 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     } catch (err) {
       this.error('Could not register video stream:', (err as Error).message);
     }
+  }
+
+  /**
+   * Publishes the camera over WebRTC, negotiated directly with Scrypted.
+   *
+   * The RTSP path hands Homey a rebroadcast URL and lets Homey's own WebRTC proxy carry it
+   * outward, which means the stream is unpacked and repacked on the way. Here the camera and
+   * the viewer negotiate once and the media flows between them, which is what removes the
+   * hop. `HomeyOfferSession` carries the whole of the shape mismatch between the two APIs.
+   *
+   * Nothing is cached across plays: a signalling session belongs to one viewer and one
+   * connection, so each offer opens its own and its control handle dies with it.
+   */
+  private async setupWebRTCVideo(videos: NonNullable<ReturnType<typeof videosOf>>): Promise<void> {
+    const video = await videos.createVideoWebRTC({ acceptInvalidCertificates: true });
+    if (!await this.resources.add('the WebRTC stream', async () => {
+      this.video = null;
+      await video.unregister();
+    })) return;
+
+    this.video = video;
+
+    video.registerOfferListener(async (offerSdp: string) => {
+      const device = this.scryptedDevice;
+      if (!device || typeof device.startRTCSignalingSession !== 'function') {
+        throw new Error(this.homey.__('errors.no_video'));
+      }
+
+      const session = new HomeyOfferSession(offerSdp);
+      let control: { endSession(): Promise<void> } | undefined;
+
+      try {
+        // Started before the wait, and the wait is what produces the answer: Scrypted calls
+        // back into the session while this promise is still in flight.
+        control = await device.startRTCSignalingSession(session) as typeof control;
+        const answerSdp = await session.waitForAnswer();
+
+        if (session.ignoredCandidates) {
+          // Not fatal — the answer already holds whatever was gathered in time — but it
+          // means the far side trickled despite being asked not to, which is the first
+          // thing to know if the picture is one-way or never starts.
+          this.trace(`webrtc: ${session.ignoredCandidates} late ICE candidate(s) discarded`);
+        }
+
+        this.rtcControls.set(offerSdp, control);
+        return { answerSdp, streamId: offerSdp };
+      } catch (err) {
+        // A session that opened and then failed to answer still holds resources on the
+        // Scrypted side, and no one else will close it.
+        session.reject(err as Error);
+        await control?.endSession().catch(() => undefined);
+        throw err;
+      }
+    });
+
+    video.registerKeepAliveListener(async (streamId: string) => {
+      const control = this.rtcControls.get(streamId) as { extendSession?(): Promise<void> } | undefined;
+      await control?.extendSession?.().catch(() => undefined);
+    });
+
+    await setCameraVideo(this, 'main', 'Live', video);
   }
 
   private async resolveStreamUrl(): Promise<string> {

@@ -21,7 +21,8 @@
     "offline": "Offline in Scrypted",
     "password_required": "Een wachtwoord of aanmeldtoken is vereist.",
     "port_invalid": "De poort moet een getal tussen 1 en 65535 zijn.",
-    "username_required": "Een gebruikersnaam is vereist."
+    "username_required": "Een gebruikersnaam is vereist.",
+    "no_recent_event": "Nog geen opgenomen detectie. De recorder bewaart herkende objecten; gewone beweging wordt niet als opvraagbare gebeurtenis bewaard."
   },
   "settings": {
     "title": "Scrypted",
@@ -32,5 +33,8 @@
     "disconnected": "Niet verbonden",
     "saved": "Opgeslagen en opnieuw verbonden.",
     "password_unchanged": "Laat leeg om het opgeslagen wachtwoord te behouden."
+  },
+  "images": {
+    "last_event": "Laatste detectie"
   }
 }
