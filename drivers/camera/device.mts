@@ -11,6 +11,7 @@ import {
   detectionGroupFor,
   OBJECT_DETECTION_CAPABILITIES,
 } from '../../lib/capabilityMap.mjs';
+import { DetectionThrottle } from '../../lib/detectionThrottle.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
 import { isLoopbackUrl, rewriteLoopbackHost } from '../../lib/streamUrl.mjs';
 import type { AnyScryptedDevice } from '../../lib/types.mjs';
@@ -20,10 +21,27 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_RESET_SECONDS = 30;
 const DEFAULT_MIN_SCORE = 0.5;
+const DEFAULT_TRIGGER_COOLDOWN_SECONDS = 10;
+
+/**
+ * How rarely the "nothing qualified" diagnostic line may be written.
+ *
+ * Deliberately a constant and not the trigger cooldown: the two are unrelated, and tying
+ * them together removed the limit entirely at the cooldown's documented `0` opt-out.
+ */
+const BELOW_THRESHOLD_TRACE_MS = 10_000;
+
+/** Mirrors `asNumber` in capabilityMap: anything that is not a real number is not a number. */
+function finiteOr(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 interface CameraSettings {
   detection_reset_seconds: number;
   detection_min_score: number;
+  /** Shortest gap between two Flow triggers for the same object group. See `DetectionThrottle`. */
+  detection_trigger_cooldown: number;
   /** Which of Scrypted's streams to request. See `resolveStreamUrl`. */
   stream_destination: MediaStreamDestination;
 }
@@ -47,6 +65,12 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   /** One auto-clear timer per detection capability, keyed by capability id. */
   private readonly resetTimers = new Map<string, NodeJS.Timeout>();
 
+  /** Rate-limits the two expensive effects of a detection: the frame fetch and the trigger. */
+  private readonly throttle = new DetectionThrottle();
+
+  /** When the "nothing qualified" diagnostic line was last written. See `traceBelowThreshold`. */
+  private lastBelowThresholdTrace = Number.NEGATIVE_INFINITY;
+
   /** Detection classes seen on this camera, used to decide which alarms to expose. */
   private detectionCapabilities = new Set<string>();
 
@@ -55,6 +79,11 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     return {
       detection_reset_seconds: Number(raw.detection_reset_seconds ?? DEFAULT_RESET_SECONDS),
       detection_min_score: Number(raw.detection_min_score ?? DEFAULT_MIN_SCORE),
+      // Finite-checked, unlike its neighbours: a stored value that coerces to NaN would
+      // reach the throttle as a NaN cooldown, and the whole limit exists to survive being
+      // handed a bad number rather than quietly reverting to no limit at all.
+      detection_trigger_cooldown: finiteOr(
+        raw.detection_trigger_cooldown, DEFAULT_TRIGGER_COOLDOWN_SECONDS),
       stream_destination: (raw.stream_destination ?? 'remote') as MediaStreamDestination,
     };
   }
@@ -76,6 +105,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     await this.resources.add('the detection timers', () => {
       for (const timer of this.resetTimers.values()) this.homey.clearTimeout(timer);
       this.resetTimers.clear();
+      this.throttle.clear();
       this.lastDetectionFrame = null;
     });
 
@@ -101,6 +131,10 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     if (interfaces.includes(ScryptedInterface.VideoCamera)) {
       await this.setupVideo();
     }
+
+    // A detection arriving after a reconnect is news, whatever the clock says about one
+    // that arrived before the gap — so the cooldown does not carry across it.
+    this.throttle.clear();
 
     await this.clearStaleDetectionAlarms();
   }
@@ -310,26 +344,20 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     const detections = detected?.detections ?? [];
     if (!detections.length) return;
 
-    // Only classes that map to something are worth recording; a bare motion detection
-    // arrives many times a second and is already covered by alarm_motion.
-    if (detections.some(d => String(d.className).toLowerCase() !== 'motion')) {
-      this.trace(`detection: ${JSON.stringify(detections.map(d => ({ c: d.className, s: d.score })))}`);
-    }
-
-    const { detection_min_score: minScore } = this.settings;
-
-    // Scrypted only retains a frame when the detector flagged the session for retention.
-    if (detected.detectionId && typeof device.getDetectionInput === 'function') {
-      const frame = await this.fetchDetectionFrame(device, detected.detectionId);
-      // The fetch is a round-trip to Scrypted, long enough for the device to be deleted
-      // underneath it. Keeping the frame then would pin megabytes to a device that is gone.
-      if (this.resources.isReleased) return;
-      this.lastDetectionFrame = frame;
-    }
+    const { detection_min_score: minScore, detection_trigger_cooldown: cooldown } = this.settings;
+    const cooldownMs = Math.max(0, cooldown) * 1000;
+    const now = Date.now();
 
     const raisedAlarms = new Set<string>();
-    const triggeredGroups = new Set<string>();
+    /** Every group in this event, throttled or not: the summary capability reflects all of them. */
+    const seenGroups = new Set<string>();
+    /** The groups allowed to pay for a frame fetch and a Flow trigger this time round. */
+    const admittedGroups: { group: string; className: string; label?: string; score: number }[] = [];
 
+    // Alarms are raised inside this loop for every event, deliberately outside the throttle
+    // below. They are cheap — a write that would not change the value is skipped — and
+    // their auto-clear countdown has to restart on each frame, which is what keeps an alarm
+    // continuously true for as long as the activity lasts.
     for (const detection of detections) {
       const className = String(detection.className ?? '').toLowerCase();
       if (!className || (detection.score ?? 0) < minScore) continue;
@@ -346,18 +374,91 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
 
       // One frame routinely contains several objects of the same kind. Firing the trigger
       // once per person in view would spam the Flow, so each group triggers once per event.
-      if (triggeredGroups.has(group)) continue;
-      triggeredGroups.add(group);
+      if (seenGroups.has(group)) continue;
+      seenGroups.add(group);
 
-      await this.triggerObjectDetected(group, className, detection.label, detection.score ?? 0);
+      // And across events, the detector re-reports the same object on every analysed frame.
+      // Admitting each of those would fetch a JPEG over RPC and fire a Flow trigger hundreds
+      // of times a second, which is what used to take the app down.
+      if (!this.throttle.admit(group, cooldownMs, now)) continue;
+
+      admittedGroups.push({
+        group,
+        className,
+        label: detection.label,
+        score: detection.score ?? 0,
+      });
     }
 
-    if (triggeredGroups.size && this.hasCapability('scrypted_detection')) {
-      const summary = [...triggeredGroups].join(', ');
+    // Re-checked after the awaits above, like every other post-await write in this file:
+    // teardown may have landed while the alarms were being raised.
+    if (this.resources.isReleased) return;
+
+    // The summary is a plain capability write, guarded against writing an unchanged value,
+    // so it stays honest about what is in view even while the triggers are held back.
+    if (seenGroups.size && this.hasCapability('scrypted_detection')) {
+      const summary = [...seenGroups].join(', ');
       if (this.getCapabilityValue('scrypted_detection') !== summary) {
         await this.setCapabilityValue('scrypted_detection', summary).catch(() => undefined);
       }
     }
+
+    if (!admittedGroups.length) {
+      // Nothing qualified at all — as opposed to qualifying and being held back. "My Flow
+      // never fires" is the question this buffer exists to answer, and before the throttle
+      // the unfiltered detection line was what showed a user their score threshold sat
+      // above what their camera actually reports. Paced by its own constant so it cannot
+      // flood the way the old unconditional trace did.
+      if (!seenGroups.size) this.traceBelowThreshold(detections, minScore, now);
+      return;
+    }
+
+    // Traced only for admitted detections. Tracing every one filled the 200-line diagnostics
+    // buffer with a fraction of a second of a single camera, which is precisely when the
+    // buffer is needed to show what the other cameras were doing.
+    this.trace(`detection: ${JSON.stringify(
+      admittedGroups.map(d => ({ c: d.className, s: d.score })))}`);
+
+    // After the throttle, never before: this is a round trip to Scrypted plus a JPEG decode,
+    // and it is worth paying only for an event that is actually going to reach a Flow.
+    // Scrypted only retains a frame when the detector flagged the session for retention.
+    if (detected.detectionId && typeof device.getDetectionInput === 'function') {
+      const frame = await this.fetchDetectionFrame(device, detected.detectionId);
+      // The fetch is long enough for the device to be deleted underneath it. Keeping the
+      // frame then would pin megabytes to a device that is gone.
+      if (this.resources.isReleased) return;
+      this.lastDetectionFrame = frame;
+    }
+
+    for (const admitted of admittedGroups) {
+      await this.triggerObjectDetected(
+        admitted.group, admitted.className, admitted.label, admitted.score);
+    }
+  }
+
+  /**
+   * Records why an event reached no Flow, at most once per `BELOW_THRESHOLD_TRACE_MS`.
+   *
+   * Kept off `DetectionThrottle` so a diagnostic line cannot occupy a slot in the map that
+   * decides what actually fires, and paced by its own constant rather than by the trigger
+   * cooldown. Borrowing that setting made the limit vanish at its documented opt-out: a
+   * cooldown of zero left this writing a line per event — a `JSON.stringify`, a timestamp
+   * and a Homey log write, hundreds of times a second — in the one configuration where no
+   * Flow fires at all. That is the per-event cost this whole change exists to remove, and
+   * a diagnostic cadence has no reason to be wired to a trigger setting in the first place.
+   */
+  private traceBelowThreshold(
+    detections: ObjectsDetected['detections'],
+    minScore: number,
+    now: number,
+  ): void {
+    const elapsed = now - this.lastBelowThresholdTrace;
+    // A rewound clock falls through and traces, matching how `admit` treats one.
+    if (elapsed >= 0 && elapsed < BELOW_THRESHOLD_TRACE_MS) return;
+    this.lastBelowThresholdTrace = now;
+
+    this.trace(`no trigger, min score ${minScore}: ${JSON.stringify(
+      (detections ?? []).map(d => ({ c: d.className, s: d.score })))}`);
   }
 
   private async fetchDetectionFrame(

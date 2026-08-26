@@ -108,6 +108,26 @@
       }
     },
     {
+      "id": "detection_trigger_cooldown",
+      "type": "number",
+      "label": {
+        "en": "Trigger cooldown",
+        "fr": "Délai entre déclenchements",
+        "nl": "Wachttijd tussen triggers"
+      },
+      "hint": {
+        "en": "Scrypted re-reports the same object on every analysed frame, which can reach hundreds of events per second. The Flow trigger fires on the first one and then waits this many seconds before firing again for the same kind of object. The alarm tiles are unaffected. Set to 0 to trigger on every raw event.",
+        "fr": "Scrypted resignale le même objet à chaque image analysée, ce qui peut atteindre des centaines d'événements par seconde. La carte de Flow se déclenche sur le premier, puis attend ce nombre de secondes avant de se redéclencher pour le même type d'objet. Les tuiles d'alarme ne sont pas concernées. Mettre 0 pour se déclencher sur chaque événement brut.",
+        "nl": "Scrypted meldt hetzelfde object bij elk geanalyseerd beeld opnieuw, wat kan oplopen tot honderden gebeurtenissen per seconde. De Flow-trigger gaat af bij de eerste en wacht daarna dit aantal seconden voordat hij opnieuw afgaat voor hetzelfde soort object. De alarmtegels blijven ongewijzigd. Zet op 0 om bij elke ruwe gebeurtenis af te gaan."
+      },
+      "value": 10,
+      "min": 0,
+      "max": 3600,
+      "units": {
+        "en": "s"
+      }
+    },
+    {
       "id": "detection_min_score",
       "type": "number",
       "label": {
