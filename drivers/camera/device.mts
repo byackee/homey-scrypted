@@ -23,6 +23,14 @@ const DEFAULT_RESET_SECONDS = 30;
 const DEFAULT_MIN_SCORE = 0.5;
 const DEFAULT_TRIGGER_COOLDOWN_SECONDS = 10;
 
+/**
+ * How rarely the "nothing qualified" diagnostic line may be written.
+ *
+ * Deliberately a constant and not the trigger cooldown: the two are unrelated, and tying
+ * them together removed the limit entirely at the cooldown's documented `0` opt-out.
+ */
+const BELOW_THRESHOLD_TRACE_MS = 10_000;
+
 /** Mirrors `asNumber` in capabilityMap: anything that is not a real number is not a number. */
 function finiteOr(value: unknown, fallback: number): number {
   const parsed = Number(value);
@@ -399,9 +407,9 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       // Nothing qualified at all — as opposed to qualifying and being held back. "My Flow
       // never fires" is the question this buffer exists to answer, and before the throttle
       // the unfiltered detection line was what showed a user their score threshold sat
-      // above what their camera actually reports. Rate-limited on its own clock so it
-      // cannot flood the way the old unconditional trace did.
-      if (!seenGroups.size) this.traceBelowThreshold(detections, minScore, cooldownMs, now);
+      // above what their camera actually reports. Paced by its own constant so it cannot
+      // flood the way the old unconditional trace did.
+      if (!seenGroups.size) this.traceBelowThreshold(detections, minScore, now);
       return;
     }
 
@@ -429,19 +437,24 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   }
 
   /**
-   * Records why an event reached no Flow, at most once per cooldown.
+   * Records why an event reached no Flow, at most once per `BELOW_THRESHOLD_TRACE_MS`.
    *
    * Kept off `DetectionThrottle` so a diagnostic line cannot occupy a slot in the map that
-   * decides what actually fires, and so its clock is independent of any object group.
+   * decides what actually fires, and paced by its own constant rather than by the trigger
+   * cooldown. Borrowing that setting made the limit vanish at its documented opt-out: a
+   * cooldown of zero left this writing a line per event — a `JSON.stringify`, a timestamp
+   * and a Homey log write, hundreds of times a second — in the one configuration where no
+   * Flow fires at all. That is the per-event cost this whole change exists to remove, and
+   * a diagnostic cadence has no reason to be wired to a trigger setting in the first place.
    */
   private traceBelowThreshold(
     detections: ObjectsDetected['detections'],
     minScore: number,
-    cooldownMs: number,
     now: number,
   ): void {
     const elapsed = now - this.lastBelowThresholdTrace;
-    if (cooldownMs > 0 && elapsed >= 0 && elapsed < cooldownMs) return;
+    // A rewound clock falls through and traces, matching how `admit` treats one.
+    if (elapsed >= 0 && elapsed < BELOW_THRESHOLD_TRACE_MS) return;
     this.lastBelowThresholdTrace = now;
 
     this.trace(`no trigger, min score ${minScore}: ${JSON.stringify(
