@@ -12,6 +12,7 @@ import {
   OBJECT_DETECTION_CAPABILITIES,
 } from '../../lib/capabilityMap.mjs';
 import { DetectionThrottle } from '../../lib/detectionThrottle.mjs';
+import { finiteInRangeOr, finiteOr } from '../../lib/settings.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
 import { HomeyOfferSession } from '../../lib/webrtcBridge.mjs';
 import {
@@ -53,12 +54,6 @@ interface RtcControl {
   endSession(): Promise<void>;
   extendSession?(): Promise<void>;
   getRefreshAt?(): Promise<number | void>;
-}
-
-/** Mirrors `asNumber` in capabilityMap: anything that is not a real number is not a number. */
-function finiteOr(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 interface CameraSettings {
@@ -118,13 +113,18 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
   private get settings(): CameraSettings {
     const raw = this.getSettings() as Partial<CameraSettings>;
     return {
-      detection_reset_seconds: Number(raw.detection_reset_seconds ?? DEFAULT_RESET_SECONDS),
-      detection_min_score: Number(raw.detection_min_score ?? DEFAULT_MIN_SCORE),
-      // Finite-checked, unlike its neighbours: a stored value that coerces to NaN would
-      // reach the throttle as a NaN cooldown, and the whole limit exists to survive being
-      // handed a bad number rather than quietly reverting to no limit at all.
-      detection_trigger_cooldown: finiteOr(
-        raw.detection_trigger_cooldown, DEFAULT_TRIGGER_COOLDOWN_SECONDS),
+      // All finite-checked and range-checked. A stored value that coerces to NaN used to
+      // reach the code that consumes it, where every comparison against it is false and the
+      // failure is silent — `Math.max(1, NaN)` is `NaN`, and Node treats a `NaN` timeout as
+      // one millisecond, so a bad reset delay would have raised an alarm and cleared it in
+      // the same instant, for ever.
+      detection_reset_seconds: finiteInRangeOr(
+        raw.detection_reset_seconds, DEFAULT_RESET_SECONDS, 1, 3600),
+      // Out of range matters as much as NaN here: a score above 1 can never be reached, so
+      // the camera would go quiet with nothing to say why.
+      detection_min_score: finiteInRangeOr(raw.detection_min_score, DEFAULT_MIN_SCORE, 0, 1),
+      detection_trigger_cooldown: finiteInRangeOr(
+        raw.detection_trigger_cooldown, DEFAULT_TRIGGER_COOLDOWN_SECONDS, 0, 3600),
       stream_destination: (raw.stream_destination ?? 'remote') as MediaStreamDestination,
     };
   }
