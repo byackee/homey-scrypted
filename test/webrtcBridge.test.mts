@@ -22,6 +22,16 @@ describe('HomeyOfferSession options', () => {
     assert.equal(options.offer?.sdp, OFFER);
   });
 
+  it('is a class, because a plain object would be copied instead of proxied', () => {
+    // `@scrypted/client` decides between copying an argument and proxying it by constructor
+    // name, and its copy list is Number, String, Object, Boolean, Array. An object literal's
+    // constructor name is `Object`, so rewriting this bridge as one would send Scrypted
+    // plain data with none of these methods, and the handshake would never begin.
+    const session = new HomeyOfferSession(OFFER);
+    assert.notEqual(session.constructor.name, 'Object');
+    assert.equal(typeof session.createLocalDescription, 'function');
+  });
+
   it('exposes options through __proxy_props, or the far side negotiates blind', () => {
     // Scrypted reads `options` across RPC. Without this mirror the property is invisible
     // there and the session is set up with no options at all — including no disableTrickle.

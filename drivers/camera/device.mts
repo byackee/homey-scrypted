@@ -41,10 +41,12 @@ const BELOW_THRESHOLD_TRACE_MS = 10_000;
 /**
  * How many WebRTC sessions one camera may hold open at once.
  *
- * A camera watched from a phone, a tablet and the web app at the same time is realistic;
- * dozens are not, and would mean sessions nobody is watching. See `rememberRtcSession`.
+ * Phones, tablets and the web app come and go, but a wall dashboard holding a camera tile
+ * open occupies a slot for as long as it is on screen — so the realistic ceiling is higher
+ * than the number of people in the house. Dozens would mean sessions nobody is watching.
+ * See `rememberRtcSession`.
  */
-const MAX_RTC_SESSIONS = 4;
+const MAX_RTC_SESSIONS = 8;
 
 /** The handle Scrypted returns for a live signalling session. */
 interface RtcControl {
@@ -431,6 +433,17 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
           this.trace(`webrtc: ${session.ignoredCandidates} late ICE candidate(s) discarded`);
         }
 
+        // Re-checked after both awaits, like every other post-await path in this file. The
+        // device can be deleted while `startRTCSignalingSession` is still in RPC, and
+        // teardown releases in reverse order — it unregisters the video and drains
+        // `rtcControls` while it is still empty. Storing the control after that point puts
+        // it in a map nothing will ever drain again, leaving the session and its rebroadcast
+        // open on the camera until Scrypted's own refresh timeout notices.
+        if (this.resources.isReleased) {
+          await control?.endSession().catch(() => undefined);
+          throw new Error(this.homey.__('errors.not_connected'));
+        }
+
         this.rememberRtcSession(offerSdp, control);
         return { answerSdp, streamId: offerSdp };
       } catch (err) {
@@ -464,6 +477,14 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * were still watching", not "opened longest ago".
    */
   private rememberRtcSession(streamId: string, control: RtcControl | undefined): void {
+    // A player that gave up and replayed reuses its peer connection, so the same offer can
+    // open a second session. A bare `set` would drop the first control without closing it —
+    // and would not move the entry, so the newest stream would be the first evicted, since
+    // `Map.set` on an existing key leaves its insertion position alone.
+    const previous = this.rtcControls.get(streamId);
+    if (previous) void previous.endSession().catch(() => undefined);
+    this.rtcControls.delete(streamId);
+
     this.rtcControls.set(streamId, control);
 
     while (this.rtcControls.size > MAX_RTC_SESSIONS) {

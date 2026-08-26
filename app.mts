@@ -213,7 +213,14 @@ export default class ScryptedApp extends Homey.App {
    * object class returns a thumbnail, while one whose only class is `motion` does not, and
    * video returns for neither on an NVR that indexes events without retaining footage.
    * "No recent event" and "the recorder keeps nothing" look identical from the tile, and
-   * this is what tells them apart. Read-only: listing events starts nothing on the camera.
+   * this is what tells them apart.
+   *
+   * Listing events and fetching a thumbnail start nothing on the camera. The `getVideoClip`
+   * branch below is different in kind and only looks harmless because it fails here: on a
+   * recorder that does retain footage it would ask Scrypted to prepare a recording, and the
+   * media object it returns is never released. That branch exists precisely for the day the
+   * configuration changes — which is the day it stops being free. Opt-in, and not called by
+   * the tile.
    */
   private async probeClips(): Promise<unknown[]> {
     const cameras = await this.hub.listDevices(['Camera', 'Doorbell']);

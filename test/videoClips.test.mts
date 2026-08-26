@@ -103,6 +103,19 @@ describe('selectLatestObjectClip', () => {
     assert.equal(selectLatestObjectClip([clip(), clip({ startTime: 5_000 })]), undefined);
   });
 
+  it('skips a newer event that has no usable id to fetch with', () => {
+    // Found by mutation: removing the `thumbnailIdOf` filter broke nothing in this suite.
+    // Without it the unusable event wins for being newest, `fetchLatestEventThumbnail` has
+    // nothing to fetch, and the tile reports "no recent event" while a perfectly good one
+    // sat one place behind it.
+    const clips = [
+      clip({ id: 'good', thumbnailId: 'good', startTime: 1_000, detectionClasses: ['person'] }),
+      clip({ id: '', thumbnailId: '', startTime: 9_000, detectionClasses: ['person'] }),
+    ];
+
+    assert.equal(selectLatestObjectClip(clips)?.id, 'good');
+  });
+
   it('ignores an event with an unusable timestamp', () => {
     const clips = [
       clip({ id: 'good', startTime: 1_000, detectionClasses: ['person'] }),
@@ -125,8 +138,12 @@ describe('clipQuery', () => {
     assert.deepEqual(query, { startTime: 6_000, endTime: 10_000, count: 7 });
   });
 
-  it('bounds the count by default, because one camera already holds 89 events', () => {
-    assert.ok((clipQuery(10_000).count ?? Infinity) <= 50);
+  it('passes a count, without relying on it', () => {
+    // Measured: this NVR answered a count of 50 with 89 clips. The assertion is that a count
+    // is sent at all — some other VideoClips provider may honour it — and deliberately not
+    // that it bounds anything, because here it does not. The window is the real bound, and
+    // the test below is the one that guards it.
+    assert.ok(Number.isFinite(clipQuery(10_000).count));
   });
 
   it('falls back to the default window rather than asking for a reversed range', () => {
@@ -169,6 +186,29 @@ describe('hasRecentDetection', () => {
     assert.equal(hasRecentDetection(clips, 'any', now, 60_000), false, 'motion is not an object');
     assert.equal(hasRecentDetection(clips, 'person', now, 60_000), false);
     assert.equal(hasRecentDetection(clips, 'motion', now, 60_000), true, 'unless asked for');
+  });
+
+  it('counts a recording that started before the window but is still running', () => {
+    // A clip that began 70 s ago and lasts 90 s covers this very moment: the object is
+    // still in front of the camera. Measured from the start alone it would fall outside a
+    // one-minute window, and the condition would answer false about something present now.
+    const clips = [clip({ startTime: now - 70_000, duration: 90_000, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(clips, 'person', now, 60_000), true);
+  });
+
+  it('still lets a finished recording fall out of the window', () => {
+    // The duration must not turn into a licence to match forever.
+    const clips = [clip({ startTime: now - 600_000, duration: 30_000, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(clips, 'person', now, 60_000), false);
+  });
+
+  it('does not let a duration running into the future match every window', () => {
+    // A clip still being written can be stamped as ending after `now`.
+    const clips = [clip({ startTime: now - 600_000, duration: 3_600_000, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(clips, 'person', now, 60_000), true, 'it is still running');
+
+    const stale = [clip({ startTime: now - 600_000, duration: Number.NaN, detectionClasses: ['person'] })];
+    assert.equal(hasRecentDetection(stale, 'person', now, 60_000), false, 'an unusable duration is zero');
   });
 
   it('ignores an event stamped in the future', () => {

@@ -9,8 +9,16 @@ const MOTION_CLASS = 'motion';
 
 /**
  * Asking Scrypted for clips is a query, not a subscription, so every caller has to choose a
- * window and a limit. Left unbounded, a camera with weeks of events answers with every one
- * it holds — over RPC, into a Homey app's memory. One camera here already holds 89.
+ * window.
+ *
+ * The window is what actually bounds the answer. `count` is passed as well, but measured
+ * against this NVR it is not honoured: a query asking for 50 came back with 89. Treat it as
+ * a hint that some other `VideoClips` provider may respect, and never as the reason the
+ * response is a safe size — that reason is `startTime`.
+ *
+ * Because `count` is not enforced here, it also cannot truncate the answer from the wrong
+ * end, which would otherwise matter: this NVR replies oldest-first, so a provider that did
+ * enforce it could hand back the 50 oldest events and hide every recent one.
  */
 export function clipQuery(
   now: number,
@@ -83,6 +91,12 @@ export function selectLatestObjectClip(
  * Groups, not raw classes, so a condition asking about "vehicle" is satisfied by a recorded
  * `truck` — the same collapse the Flow trigger applies, via the same table.
  *
+ * Measured from when the recording *ended*, not when it began. These clips run about 30
+ * seconds and can run longer, so a condition asking about the last minute would otherwise
+ * miss someone who is still standing in front of the camera: a clip that started 70 seconds
+ * ago and lasts 90 covers this very moment. The window the user set means "was it there",
+ * not "did it arrive".
+ *
  * A clip stamped in the future is ignored rather than counted: a camera whose clock runs
  * ahead would otherwise satisfy every window forever.
  */
@@ -97,7 +111,12 @@ export function hasRecentDetection(
   return (clips ?? []).some(clip => {
     if (!Number.isFinite(clip.startTime)) return false;
     if (clip.startTime > now) return false;
-    if (now - clip.startTime > windowMs) return false;
+
+    // Clamped to `now`: a clip still being written can end in the future, and letting that
+    // through would make the elapsed time negative and match any window at all.
+    const duration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration as number) : 0;
+    const endedAt = Math.min(now, clip.startTime + duration);
+    if (now - endedAt > windowMs) return false;
 
     return (clip.detectionClasses ?? []).some(className => {
       const normalised = String(className).toLowerCase();
