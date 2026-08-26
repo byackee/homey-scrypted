@@ -45,15 +45,29 @@ export const ANSWER_TIMEOUT_MS = 20_000;
  * gather candidates after the answer and deliver them through `addIceCandidate`, which has
  * nowhere to go here — Homey has already been given its single answer and will not take
  * more. With it, Scrypted is required to put every candidate in the answer SDP itself.
+ *
+ * This has to stay a class, and that is not a stylistic preference. `@scrypted/client`
+ * decides between copying an argument and proxying it by its constructor name, and the
+ * copy list is `Number, String, Object, Boolean, Array` — `getDefaultTransportSafeArgumentTypes`
+ * in `rpc.js`. An object literal has the constructor name `Object`, so it would be
+ * serialised by value: Scrypted would receive plain data with none of these methods, and
+ * the handshake would never begin. A named class falls through to the proxy path instead.
+ * Rewriting this as a plain object is the one refactor that silently destroys it.
  */
 export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocalDescription' | 'setRemoteDescription' | 'addIceCandidate'> {
 
   readonly options: RTCSignalingOptions;
 
   /**
-   * Scrypted reads `options` across an RPC boundary. `__proxy_props` is how a proxied object
-   * exposes plain values without a round-trip per read; without it the property is invisible
-   * to the far side and the session is negotiated with no options at all.
+   * How `options` reaches the far side at all.
+   *
+   * Scrypted reads this session across an RPC boundary, and its proxy resolves a property
+   * read from the proxy properties first: `if (this.proxyProps?.[p] !== undefined) return
+   * this.proxyProps?.[p]` — `@scrypted/client`'s `rpc.js`, in `RpcProxy.get`. A property
+   * not listed there falls through to `return new Proxy(() => p, this)`, so `session.options`
+   * would be a *function proxy* rather than this object, and `options.disableTrickle` a
+   * truthy proxy rather than `true`. The bridge would appear to negotiate and then behave as
+   * though trickle were never disabled, which is the hardest possible way to find this out.
    */
   readonly __proxy_props: { options: RTCSignalingOptions };
 
