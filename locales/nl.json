@@ -32,7 +32,11 @@
     "connected": "Verbonden met Scrypted {{version}}",
     "disconnected": "Niet verbonden",
     "saved": "Opgeslagen en opnieuw verbonden.",
-    "password_unchanged": "Laat leeg om het opgeslagen wachtwoord te behouden."
+    "password_unchanged": "Laat leeg om het opgeslagen wachtwoord te behouden.",
+    "connecting": "Verbinden…",
+    "saved_connecting": "Opgeslagen. Bezig met verbinden met Scrypted…",
+    "still_connecting": "Nog steeds geen verbinding. Controleer de gegevens hierboven en bekijk daarna de diagnostiek van de app.",
+    "no_answer": "De app reageert niet. Controleer of de Scrypted-app op deze Homey draait."
   },
   "images": {
     "last_event": "Laatste detectie"

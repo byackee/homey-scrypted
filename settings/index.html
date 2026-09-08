@@ -61,30 +61,100 @@
       const $ = id => document.getElementById(id);
       const message = $('message');
 
+      // How long the page keeps asking after a save, and how often. The connection is made
+      // in the background — saving no longer waits for it — so the page has to come back for
+      // the result rather than be handed it.
+      const POLL_INTERVAL_MS = 3000;
+      const POLL_WINDOW_MS = 45000;
+      let pollTimer = null;
+
       function setMessage(text, kind) {
-        message.textContent = text;
+        message.textContent = text || '';
         message.className = 'message' + (kind ? ' ' + kind : '');
       }
 
-      function renderStatus(status) {
-        $('dot').className = 'dot ' + (status.connected ? 'on' : 'off');
-        $('statusText').textContent = status.connected
-          ? Homey.__('settings.connected', { version: status.serverVersion || '?' })
-          : Homey.__('settings.disconnected');
+      /**
+       * Whatever the API gave us, as something readable.
+       *
+       * An error crossing the settings bridge is not always an Error: it arrives as a plain
+       * object, and sometimes as a string. `String(err)` on the object yields "[object
+       * Object]", which is no better than silence.
+       */
+      function errorText(err) {
+        if (!err) return '';
+        if (typeof err === 'string') return err;
+        return err.message || err.error || JSON.stringify(err);
       }
 
-      Homey.api('GET', '/status', null, (err, result) => {
-        if (err) return setMessage(err.message || String(err), 'error');
-        renderStatus(result);
-        if (result.config) {
-          $('host').value = result.config.host || '';
-          $('port').value = result.config.port || 10443;
-          $('username').value = result.config.username || '';
+      /**
+       * Draws the connection state, and survives being given nothing.
+       *
+       * The API answers with no result at all when the app is not running — which is exactly
+       * when someone opens this page. Reading `connected` straight off that is what replaced
+       * every real fault with "Cannot read properties of undefined (reading 'connected')".
+       */
+      function renderStatus(status) {
+        if (!status) {
+          $('dot').className = 'dot off';
+          $('statusText').textContent = Homey.__('settings.no_answer');
+          return null;
+        }
+
+        const connecting = !status.connected && status.connecting;
+        $('dot').className = 'dot' + (status.connected ? ' on' : connecting ? '' : ' off');
+        $('statusText').textContent = status.connected
+          ? Homey.__('settings.connected', { version: status.serverVersion || '?' })
+          : connecting
+            ? Homey.__('settings.connecting')
+            : Homey.__('settings.disconnected');
+        return status;
+      }
+
+      function loadStatus(done) {
+        Homey.api('GET', '/status', null, (err, result) => {
+          if (err) {
+            renderStatus(null);
+            setMessage(errorText(err), 'error');
+            return done(null);
+          }
+          done(renderStatus(result));
+        });
+      }
+
+      function stopPolling() {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+
+      function poll(deadline) {
+        pollTimer = setTimeout(() => {
+          loadStatus(status => {
+            if (!status) return;
+            if (status.connected) return setMessage(Homey.__('settings.saved'), 'ok');
+            // The reason the hub recorded, which is the one thing worth reporting here. It
+            // is cleared when new details are saved, so it can only describe this attempt.
+            if (status.lastError) return setMessage(status.lastError.reason, 'error');
+            if (Date.now() < deadline) return poll(deadline);
+            setMessage(Homey.__('settings.still_connecting'), 'error');
+          });
+        }, POLL_INTERVAL_MS);
+      }
+
+      loadStatus(status => {
+        if (!status) return;
+        if (status.config) {
+          $('host').value = status.config.host || '';
+          $('port').value = status.config.port || 10443;
+          $('username').value = status.config.username || '';
+        }
+        if (!status.connected && !status.connecting && status.lastError) {
+          setMessage(status.lastError.reason, 'error');
         }
       });
 
       $('save').addEventListener('click', () => {
         setMessage('');
+        stopPolling();
         $('save').disabled = true;
 
         Homey.api('PUT', '/config', {
@@ -94,9 +164,15 @@
           password: $('password').value,
         }, (err, result) => {
           $('save').disabled = false;
-          if (err) return setMessage(err.message || String(err), 'error');
-          renderStatus(result);
-          setMessage(Homey.__('settings.saved'), 'ok');
+          if (err) return setMessage(errorText(err), 'error');
+
+          const status = renderStatus(result);
+          if (!status) return setMessage(Homey.__('settings.no_answer'), 'error');
+          if (status.connected) return setMessage(Homey.__('settings.saved'), 'ok');
+          if (status.lastError) return setMessage(status.lastError.reason, 'error');
+
+          setMessage(Homey.__('settings.saved_connecting'));
+          poll(Date.now() + POLL_WINDOW_MS);
         });
       });
 

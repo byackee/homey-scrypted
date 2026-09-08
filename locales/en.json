@@ -32,7 +32,11 @@
     "connected": "Connected to Scrypted {{version}}",
     "disconnected": "Not connected",
     "saved": "Saved and reconnected.",
-    "password_unchanged": "Leave blank to keep the stored password."
+    "password_unchanged": "Leave blank to keep the stored password.",
+    "connecting": "Connecting…",
+    "saved_connecting": "Saved. Connecting to Scrypted…",
+    "still_connecting": "Still not connected. Check the details above, then open the app diagnostics.",
+    "no_answer": "The app is not answering. Check that the Scrypted app is running on this Homey."
   },
   "images": {
     "last_event": "Last detection"

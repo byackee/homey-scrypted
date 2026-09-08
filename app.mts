@@ -3,6 +3,7 @@ import Homey from 'homey';
 import { ScryptedMimeTypes } from '@scrypted/types';
 import type { MediaStreamUrl, VideoClip } from '@scrypted/types';
 import { ScryptedHub } from './lib/ScryptedHub.mjs';
+import { describeConnectFailure } from './lib/connectErrors.mjs';
 import { typesForDriver, type DriverId } from './lib/deviceTypeMap.mjs';
 import { clipQuery, isObjectClip, selectLatestObjectClip, thumbnailIdOf } from './lib/videoClips.mjs';
 import type { ScryptedConfig } from './lib/types.mjs';
@@ -10,6 +11,15 @@ import type { ScryptedConfig } from './lib/types.mjs';
 sourceMapSupport.install();
 
 const SETTINGS_KEY = 'scrypted.config';
+
+/**
+ * How long saving the server details waits for the connection before answering anyway.
+ *
+ * Long enough that a reachable server is already connected when the page redraws, short
+ * enough to stay well inside the timeout Homey puts on an app API call. What matters is
+ * that the page is never left without an answer: the connect itself carries on.
+ */
+const SAVE_GRACE_MS = 6_000;
 
 /** Hides any user:password embedded in a URL before it reaches the diagnostics output. */
 function maskCredentials(url?: string): string | undefined {
@@ -86,11 +96,31 @@ export default class ScryptedApp extends Homey.App {
     const password = update.password || stored?.password;
     if (!password) throw new Error(this.homey.__('errors.password_required'));
 
-    await this.saveConfig({
+    const config: ScryptedConfig = {
       host: update.host,
       port: update.port,
       username: update.username,
       password,
+    };
+
+    this.homey.settings.set(SETTINGS_KEY, config);
+
+    // Started, then given a grace period rather than waited out. A connect runs to its own
+    // one-minute deadline against a host that is not there, and Homey's settings API gives
+    // up on the call long before that — leaving the page with neither a result nor an error,
+    // which is what made it report a TypeError about `connected` instead of the real fault.
+    // The attempt continues regardless of what this returns; `/status` reports where it got.
+    const connecting = this.hub.setConfig(config)
+      .catch(err => this.trace(`settings: connect failed: ${(err as Error).message}`));
+
+    await Promise.race([connecting, this.pause(SAVE_GRACE_MS)]);
+  }
+
+  /** A timer that cannot by itself keep the app alive. */
+  private pause(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
     });
   }
 
@@ -100,8 +130,46 @@ export default class ScryptedApp extends Homey.App {
     return config ? { host: config.host, port: config.port, username: config.username } : null;
   }
 
-  getStatus(): { connected: boolean; serverVersion?: string } {
-    return { connected: this.hub.isConnected, serverVersion: this.hub.serverVersion };
+  getStatus(): {
+    connected: boolean;
+    connecting: boolean;
+    serverVersion?: string;
+    lastError?: { at: string; reason: string } | null;
+  } {
+    return {
+      connected: this.hub.isConnected,
+      connecting: this.hub.isConnecting,
+      serverVersion: this.hub.serverVersion,
+      // What the settings page shows when the dot is red. Without it the page can say only
+      // "not connected", which is the one thing the user already knows.
+      lastError: this.hub.lastError,
+    };
+  }
+
+  /**
+   * What this app is running on, and what it costs to run.
+   *
+   * Homey Pro (Early 2019) stops an app that grows past roughly 80 MB of resident memory,
+   * and stops it the way the kernel does: no exception, no stack trace, an empty stderr and
+   * a store entry that reads "the app is not working". That failure is indistinguishable
+   * from a crash in a report unless the app has said how much memory it was using, so it
+   * says so here. `platformVersion` is 1 on those models and 2 on Homey Pro (2023).
+   */
+  private describeRuntime(): Record<string, unknown> {
+    const memory = process.memoryUsage();
+    const mb = (bytes: number): number => Math.round(bytes / 104857.6) / 10;
+
+    return {
+      node: process.version,
+      platform: this.homey.platform ?? 'local',
+      // The SDK leaves this undefined on firmware old enough not to report it, and documents
+      // 1 as the assumption there.
+      platformVersion: this.homey.platformVersion ?? 1,
+      homeyVersion: (this.homey as { version?: string }).version,
+      appVersion: (this.homey.manifest as { version?: string } | undefined)?.version,
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryMB: { rss: mb(memory.rss), heapUsed: mb(memory.heapUsed), external: mb(memory.external) },
+    };
   }
 
   /**
@@ -118,7 +186,26 @@ export default class ScryptedApp extends Homey.App {
   async getDiagnostics(
     options: { video?: boolean; plugins?: boolean; clips?: boolean } = {},
   ): Promise<unknown> {
-    const client = await this.hub.getClient();
+    const runtime = this.describeRuntime();
+
+    let client;
+    try {
+      client = await this.hub.getClient();
+    } catch (err) {
+      // The endpoint used to fail with the connection it could not make, which threw away
+      // everything it could still have said. A server that is unreachable is precisely when
+      // the runtime figures, the stored host and the trace buffer are worth having.
+      return {
+        runtime,
+        connected: false,
+        connectError: describeConnectFailure(err),
+        lastError: this.hub.lastError,
+        config: this.getPublicConfig(),
+        pairedDevices: this.describePairedDevices(),
+        traces: this.traces,
+      };
+    }
+
     const state = client.systemManager.getSystemState();
     const ids = Object.keys(state ?? {});
 
@@ -129,6 +216,8 @@ export default class ScryptedApp extends Homey.App {
     }
 
     return {
+      runtime,
+      connected: true,
       serverVersion: this.hub.serverVersion,
       systemStateEntries: ids.length,
       typeCounts,
