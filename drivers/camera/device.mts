@@ -15,6 +15,7 @@ import { DetectionThrottle } from '../../lib/detectionThrottle.mjs';
 import { finiteInRangeOr, finiteOr } from '../../lib/settings.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
 import { HomeyOfferSession } from '../../lib/webrtcBridge.mjs';
+import { alignAnswerToOffer } from '../../lib/sdpAlign.mjs';
 import {
   clipQuery,
   hasRecentDetection,
@@ -424,7 +425,22 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
         // Started before the wait, and the wait is what produces the answer: Scrypted calls
         // back into the session while this promise is still in flight.
         control = await device.startRTCSignalingSession(session) as RtcControl | undefined;
-        const answerSdp = await session.waitForAnswer();
+        const answer = alignAnswerToOffer(offerSdp, await session.waitForAnswer());
+
+        // Homey's player holds the answerer to the rule that an answer describes the offer's
+        // media in the offer's order, and refuses one that does not with "The order of
+        // m-lines in answer doesn't match order in offer" — which reaches the user as
+        // nothing but "something went wrong". Scrypted orders its answer by the transceivers
+        // its own pipeline created, so the two disagree whenever the camera's order is not
+        // the player's. What that costs is the whole live view, so it is traced either way.
+        if (answer.changed) {
+          this.trace(`webrtc: answer re-ordered to the offer `
+            + `(offer ${answer.offerMids.join(',')} / answer ${answer.answerMids.join(',')})`);
+        } else if (answer.note) {
+          this.trace(`webrtc: answer passed through — ${answer.note} `
+            + `(offer ${answer.offerMids.join(',')} / answer ${answer.answerMids.join(',')})`);
+        }
+        const answerSdp = answer.sdp;
 
         if (session.ignoredCandidates) {
           // Not fatal — the answer already holds whatever was gathered in time — but it
