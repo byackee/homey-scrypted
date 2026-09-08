@@ -155,10 +155,7 @@ export default class ScryptedApp extends Homey.App {
    * from a crash in a report unless the app has said how much memory it was using, so it
    * says so here. `platformVersion` is 1 on those models and 2 on Homey Pro (2023).
    */
-  private describeRuntime(): Record<string, unknown> {
-    const memory = process.memoryUsage();
-    const mb = (bytes: number): number => Math.round(bytes / 104857.6) / 10;
-
+  private async describeRuntime(): Promise<Record<string, unknown>> {
     return {
       node: process.version,
       platform: this.homey.platform ?? 'local',
@@ -168,8 +165,43 @@ export default class ScryptedApp extends Homey.App {
       homeyVersion: (this.homey as { version?: string }).version,
       appVersion: (this.homey.manifest as { version?: string } | undefined)?.version,
       uptimeSeconds: Math.round(process.uptime()),
-      memoryMB: { rss: mb(memory.rss), heapUsed: mb(memory.heapUsed), external: mb(memory.external) },
+      memoryMB: await this.describeMemory(),
     };
+  }
+
+  /**
+   * What this app is holding, by whichever measure the sandbox permits.
+   *
+   * `process.memoryUsage()` is the obvious call and it throws outright on Homey — the whole
+   * call, not just the field it cannot fill: `ENOENT: no such file or directory,
+   * uv_resident_set_memory`, because reading a process's resident set means reading a file
+   * the app is not allowed to see. Asking cost the diagnostics endpoint its entire answer
+   * the first time this was tried on a real Homey.
+   *
+   * V8's own heap statistics need no such file, and the heap is the part this app grows: the
+   * client library, the system state it mirrors and the per-device proxies all live there.
+   * Resident memory is what Homey's watchdog actually measures, so when it cannot be read
+   * here the report says so rather than implying the heap figure is the same thing.
+   */
+  private async describeMemory(): Promise<Record<string, unknown>> {
+    const mb = (bytes: number): number => Math.round(bytes / 104857.6) / 10;
+
+    try {
+      const usage = process.memoryUsage();
+      return { rss: mb(usage.rss), heapUsed: mb(usage.heapUsed), external: mb(usage.external) };
+    } catch (err) {
+      try {
+        const { getHeapStatistics } = await import('node:v8');
+        const heap = getHeapStatistics();
+        return {
+          rss: `unavailable (${(err as Error).message})`,
+          heapUsed: mb(heap.used_heap_size),
+          heapTotal: mb(heap.total_heap_size),
+        };
+      } catch {
+        return { unavailable: (err as Error).message };
+      }
+    }
   }
 
   /**
@@ -186,7 +218,7 @@ export default class ScryptedApp extends Homey.App {
   async getDiagnostics(
     options: { video?: boolean; plugins?: boolean; clips?: boolean } = {},
   ): Promise<unknown> {
-    const runtime = this.describeRuntime();
+    const runtime = await this.describeRuntime();
 
     let client;
     try {

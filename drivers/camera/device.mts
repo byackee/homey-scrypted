@@ -387,6 +387,11 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       this.video = video;
       video.registerVideoUrlListener(async () => ({ url: await this.resolveStreamUrl() }));
       await setCameraVideo(this, 'main', 'Live', video);
+      // Which transport a camera ended up on is decided by a setting, an interface the
+      // camera may not have, and a Homey that may not offer the API — three conditions the
+      // user cannot see the result of. A live view that fails is the first thing reported,
+      // and this is what says which path it failed on.
+      this.trace('video: registered over RTSP');
     } catch (err) {
       this.error('Could not register video stream:', (err as Error).message);
     }
@@ -482,6 +487,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     });
 
     await setCameraVideo(this, 'main', 'Live', video);
+    this.trace('video: registered over WebRTC');
   }
 
   /**
