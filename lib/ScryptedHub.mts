@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
-import { connectScryptedClient } from '@scrypted/client';
-import type { ScryptedClientStatic } from '@scrypted/client';
+import type { connectScryptedClient, ScryptedClientStatic } from '@scrypted/client';
 import { ScryptedInterfaceProperty } from '@scrypted/types';
+import { describeConnectFailure } from './connectErrors.mjs';
 import type { AnyScryptedDevice, ScryptedConfig, ScryptedDeviceSummary } from './types.mjs';
 
 /** Plugin id the client authenticates as. `@scrypted/core` grants read/write on the system. */
@@ -19,6 +19,35 @@ const CONNECT_TIMEOUT_MS = 60_000;
 class SupersededError extends Error {}
 
 type Logger = (...args: unknown[]) => void;
+
+/**
+ * Loads `@scrypted/client` the first time a connection is actually attempted.
+ *
+ * The client and the RPC machinery behind it cost around 25 MB of resident memory, and an
+ * app that has not been given a server never uses a byte of it. That matters because Homey
+ * Pro (Early 2019) stops an app that grows past roughly 80 MB — without an exception, so
+ * the app simply reads as "not working" — and an app killed before anyone can open its
+ * settings cannot be configured, which is a loop with no way out of it.
+ *
+ * The module is kept once loaded: this defers the cost to the first connection, it does not
+ * pay it repeatedly.
+ */
+let clientModule: Promise<typeof connectScryptedClient> | undefined;
+
+const lazyConnect: typeof connectScryptedClient = async options => {
+  // A *rejected* load must not be kept: retaining it answers every later attempt and every
+  // backoff retry with the same stale failure, and nothing short of restarting the app can
+  // clear it. The environment this deferral was written for — a Homey with barely enough
+  // memory to evaluate the module — is exactly the one where the load can fail once and
+  // succeed later.
+  clientModule ??= import('@scrypted/client')
+    .then(module => module.connectScryptedClient)
+    .catch(err => {
+      clientModule = undefined;
+      throw err;
+    });
+  return (await clientModule)(options);
+};
 
 export interface ScryptedHubOptions {
   log?: Logger;
@@ -47,6 +76,15 @@ export class ScryptedHub extends EventEmitter {
   private reconnectDelay = RECONNECT_MIN_MS;
   private stopped = false;
   /**
+   * Why the last attempt failed, kept for the settings page and the diagnostics endpoint.
+   *
+   * A Homey app installed from the store has no log anyone can read, so an error that is
+   * only thrown is an error nobody ever sees: by the time a user notices their cameras are
+   * unavailable, whatever explained it was discarded minutes ago. This is the one place the
+   * reason survives long enough to be asked for.
+   */
+  private lastFailure: { at: string; reason: string } | null = null;
+  /**
    * Bumped whenever the hub abandons what it was doing — a new configuration, or shutdown.
    * An attempt captures it at the start and gives up its result if it no longer matches,
    * so a handshake that outlives the config it was made for cannot install itself.
@@ -62,11 +100,21 @@ export class ScryptedHub extends EventEmitter {
     this.setMaxListeners(0);
     this.log = options.log ?? (() => undefined);
     this.logError = options.error ?? (() => undefined);
-    this.connect = options.connect ?? connectScryptedClient;
+    this.connect = options.connect ?? lazyConnect;
   }
 
   get isConnected(): boolean {
     return this.client !== null;
+  }
+
+  /** Whether an attempt is in flight, so a caller can say "connecting" rather than "off". */
+  get isConnecting(): boolean {
+    return this.connecting !== null;
+  }
+
+  /** Why the last attempt failed, or null if the last thing that happened was a success. */
+  get lastError(): { at: string; reason: string } | null {
+    return this.lastFailure;
   }
 
   get serverVersion(): string | undefined {
@@ -107,8 +155,24 @@ export class ScryptedHub extends EventEmitter {
         // server still starting, the Mac asleep, the host briefly unreachable — leaves no
         // path back, and every device stays unavailable until the app is restarted.
         // An attempt the hub abandoned is exempt: its replacement is already under way.
-        if (!(err instanceof SupersededError)) this.scheduleReconnect();
-        throw err;
+        // Superseded by name, or superseded in fact: a `SupersededError` is only raised
+        // after the handshake completes, so an attempt that *fails* against the server the
+        // hub has already left reaches here unmarked. Recording its reason would show the
+        // old server's refusal against details just saved for a new one, and arming its
+        // retry would undo the backoff its replacement just reset.
+        if (err instanceof SupersededError || this.epoch !== epoch) throw err;
+
+        // Armed first. Everything below it describes the failure, and describing a failure
+        // must never be able to cost the recovery from it — that is the whole purpose of
+        // this catch, and an exception raised above this line would skip it.
+        this.scheduleReconnect();
+
+        // Flattened here rather than at the point it is displayed: this is the only place
+        // that still holds the aggregate the client throws, and every consumer downstream —
+        // the settings page, the repair view, diagnostics, the log — needs the same answer.
+        const reason = describeConnectFailure(err);
+        this.lastFailure = { at: new Date().toISOString(), reason };
+        throw new Error(reason, { cause: err });
       })
       .finally(() => {
         // Only while it is still the current attempt: a superseded one clearing the slot
@@ -220,6 +284,7 @@ export class ScryptedHub extends EventEmitter {
 
     this.client = client;
     this.reconnectDelay = RECONNECT_MIN_MS;
+    this.lastFailure = null;
     this.log(`Connected to Scrypted ${client.serverVersion ?? '(unknown version)'} via ${client.connectionType}`);
     this.emit('connected');
     return client;
@@ -255,6 +320,9 @@ export class ScryptedHub extends EventEmitter {
       this.reconnectTimer = null;
     }
     this.reconnectDelay = RECONNECT_MIN_MS;
+    // The recorded reason belongs to the configuration being replaced. Kept, it would be
+    // shown against the new details as though they had already failed.
+    this.lastFailure = null;
     // Whatever is in flight was built from the previous configuration. Abandoning it here
     // stops this call being answered by a connection to the server we just moved off.
     this.epoch += 1;
@@ -281,7 +349,11 @@ export class ScryptedHub extends EventEmitter {
       config,
       `https://${config.host}:${config.port}`,
       'Homey (pairing)',
-    );
+    ).catch(err => {
+      // The repair view shows this message and nothing else, so it has to carry the reason
+      // rather than the aggregate's fixed "All promises were rejected".
+      throw new Error(describeConnectFailure(err), { cause: err });
+    });
     try {
       return {
         version: client.serverVersion,

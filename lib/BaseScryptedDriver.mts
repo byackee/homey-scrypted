@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import { typesForDriver, type DriverId } from './deviceTypeMap.mjs';
 import type { ScryptedHub } from './ScryptedHub.mjs';
+import { normaliseServerConfig } from './serverConfig.mjs';
 import type { ScryptedConfig } from './types.mjs';
 
 interface ScryptedAppLike {
@@ -93,19 +94,7 @@ export abstract class BaseScryptedDriver extends Homey.Driver {
   }
 
   private normaliseConfig(data: ConfigureRequest): ScryptedConfig {
-    const host = String(data.host ?? '').trim();
-    const username = String(data.username ?? '').trim();
-    const password = String(data.password ?? '');
-    const port = Number(data.port ?? 10443);
-
-    if (!host) throw new Error(this.homey.__('errors.host_required'));
-    if (!username) throw new Error(this.homey.__('errors.username_required'));
-    if (!password) throw new Error(this.homey.__('errors.password_required'));
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new Error(this.homey.__('errors.port_invalid'));
-    }
-
-    return { host, port, username, password };
+    return normaliseServerConfig(data, key => this.homey.__(key));
   }
 
   /**

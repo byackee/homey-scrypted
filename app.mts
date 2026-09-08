@@ -3,6 +3,8 @@ import Homey from 'homey';
 import { ScryptedMimeTypes } from '@scrypted/types';
 import type { MediaStreamUrl, VideoClip } from '@scrypted/types';
 import { ScryptedHub } from './lib/ScryptedHub.mjs';
+import { describeConnectFailure } from './lib/connectErrors.mjs';
+import { normaliseServerConfig } from './lib/serverConfig.mjs';
 import { typesForDriver, type DriverId } from './lib/deviceTypeMap.mjs';
 import { clipQuery, isObjectClip, selectLatestObjectClip, thumbnailIdOf } from './lib/videoClips.mjs';
 import type { ScryptedConfig } from './lib/types.mjs';
@@ -10,6 +12,15 @@ import type { ScryptedConfig } from './lib/types.mjs';
 sourceMapSupport.install();
 
 const SETTINGS_KEY = 'scrypted.config';
+
+/**
+ * How long saving the server details waits for the connection before answering anyway.
+ *
+ * Long enough that a reachable server is already connected when the page redraws, short
+ * enough to stay well inside the timeout Homey puts on an app API call. What matters is
+ * that the page is never left without an answer: the connect itself carries on.
+ */
+const SAVE_GRACE_MS = 6_000;
 
 /** Hides any user:password embedded in a URL before it reaches the diagnostics output. */
 function maskCredentials(url?: string): string | undefined {
@@ -83,14 +94,34 @@ export default class ScryptedApp extends Homey.App {
    */
   async updateConfig(update: Omit<ScryptedConfig, 'password'> & { password?: string }): Promise<void> {
     const stored = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;
-    const password = update.password || stored?.password;
-    if (!password) throw new Error(this.homey.__('errors.password_required'));
 
-    await this.saveConfig({
-      host: update.host,
-      port: update.port,
-      username: update.username,
-      password,
+    // The stored password stands in for the empty field before the details are checked, so
+    // that leaving it blank reads as "unchanged" rather than as "no password". Everything
+    // else is checked exactly as the repair dialog checks it: this page could store an empty
+    // host, and did so without saying anything.
+    const config = normaliseServerConfig(
+      { ...update, password: update.password || stored?.password },
+      key => this.homey.__(key),
+    );
+
+    this.homey.settings.set(SETTINGS_KEY, config);
+
+    // Started, then given a grace period rather than waited out. A connect runs to its own
+    // one-minute deadline against a host that is not there, and Homey's settings API gives
+    // up on the call long before that — leaving the page with neither a result nor an error,
+    // which is what made it report a TypeError about `connected` instead of the real fault.
+    // The attempt continues regardless of what this returns; `/status` reports where it got.
+    const connecting = this.hub.setConfig(config)
+      .catch(err => this.trace(`settings: connect failed: ${(err as Error).message}`));
+
+    await Promise.race([connecting, this.pause(SAVE_GRACE_MS)]);
+  }
+
+  /** A timer that cannot by itself keep the app alive. */
+  private pause(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
     });
   }
 
@@ -100,8 +131,78 @@ export default class ScryptedApp extends Homey.App {
     return config ? { host: config.host, port: config.port, username: config.username } : null;
   }
 
-  getStatus(): { connected: boolean; serverVersion?: string } {
-    return { connected: this.hub.isConnected, serverVersion: this.hub.serverVersion };
+  getStatus(): {
+    connected: boolean;
+    connecting: boolean;
+    serverVersion?: string;
+    lastError?: { at: string; reason: string } | null;
+  } {
+    return {
+      connected: this.hub.isConnected,
+      connecting: this.hub.isConnecting,
+      serverVersion: this.hub.serverVersion,
+      // What the settings page shows when the dot is red. Without it the page can say only
+      // "not connected", which is the one thing the user already knows.
+      lastError: this.hub.lastError,
+    };
+  }
+
+  /**
+   * What this app is running on, and what it costs to run.
+   *
+   * Homey Pro (Early 2019) stops an app that grows past roughly 80 MB of resident memory,
+   * and stops it the way the kernel does: no exception, no stack trace, an empty stderr and
+   * a store entry that reads "the app is not working". That failure is indistinguishable
+   * from a crash in a report unless the app has said how much memory it was using, so it
+   * says so here. `platformVersion` is 1 on those models and 2 on Homey Pro (2023).
+   */
+  private async describeRuntime(): Promise<Record<string, unknown>> {
+    return {
+      node: process.version,
+      platform: this.homey.platform ?? 'local',
+      // The SDK leaves this undefined on firmware old enough not to report it, and documents
+      // 1 as the assumption there.
+      platformVersion: this.homey.platformVersion ?? 1,
+      homeyVersion: (this.homey as { version?: string }).version,
+      appVersion: (this.homey.manifest as { version?: string } | undefined)?.version,
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryMB: await this.describeMemory(),
+    };
+  }
+
+  /**
+   * What this app is holding, by whichever measure the sandbox permits.
+   *
+   * `process.memoryUsage()` is the obvious call and it throws outright on Homey — the whole
+   * call, not just the field it cannot fill: `ENOENT: no such file or directory,
+   * uv_resident_set_memory`, because reading a process's resident set means reading a file
+   * the app is not allowed to see. Asking cost the diagnostics endpoint its entire answer
+   * the first time this was tried on a real Homey.
+   *
+   * V8's own heap statistics need no such file, and the heap is the part this app grows: the
+   * client library, the system state it mirrors and the per-device proxies all live there.
+   * Resident memory is what Homey's watchdog actually measures, so when it cannot be read
+   * here the report says so rather than implying the heap figure is the same thing.
+   */
+  private async describeMemory(): Promise<Record<string, unknown>> {
+    const mb = (bytes: number): number => Math.round(bytes / 104857.6) / 10;
+
+    try {
+      const usage = process.memoryUsage();
+      return { rss: mb(usage.rss), heapUsed: mb(usage.heapUsed), external: mb(usage.external) };
+    } catch (err) {
+      try {
+        const { getHeapStatistics } = await import('node:v8');
+        const heap = getHeapStatistics();
+        return {
+          rss: `unavailable (${(err as Error).message})`,
+          heapUsed: mb(heap.used_heap_size),
+          heapTotal: mb(heap.total_heap_size),
+        };
+      } catch {
+        return { unavailable: (err as Error).message };
+      }
+    }
   }
 
   /**
@@ -116,9 +217,28 @@ export default class ScryptedApp extends Homey.App {
    * Add ?video=1 to also resolve each camera's stream URL.
    */
   async getDiagnostics(
-    options: { video?: boolean; plugins?: boolean; clips?: boolean } = {},
+    options: { video?: boolean; plugins?: boolean; clips?: boolean; webrtc?: boolean } = {},
   ): Promise<unknown> {
-    const client = await this.hub.getClient();
+    const runtime = await this.describeRuntime();
+
+    let client;
+    try {
+      client = await this.hub.getClient();
+    } catch (err) {
+      // The endpoint used to fail with the connection it could not make, which threw away
+      // everything it could still have said. A server that is unreachable is precisely when
+      // the runtime figures, the stored host and the trace buffer are worth having.
+      return {
+        runtime,
+        connected: false,
+        connectError: describeConnectFailure(err),
+        lastError: this.hub.lastError,
+        config: this.getPublicConfig(),
+        pairedDevices: this.describePairedDevices(),
+        traces: this.traces,
+      };
+    }
+
     const state = client.systemManager.getSystemState();
     const ids = Object.keys(state ?? {});
 
@@ -129,6 +249,8 @@ export default class ScryptedApp extends Homey.App {
     }
 
     return {
+      runtime,
+      connected: true,
       serverVersion: this.hub.serverVersion,
       systemStateEntries: ids.length,
       typeCounts,
@@ -149,6 +271,7 @@ export default class ScryptedApp extends Homey.App {
       clipProbe: options.clips ? await this.probeClips() : 'pass ?clips=1 to probe recorded clips',
       pairedDevices: this.describePairedDevices(),
       plugins: options.plugins ? await this.probePlugins() : undefined,
+      webrtc: this.describeNegotiations(options.webrtc === true),
       traces: this.traces,
     };
   }
@@ -160,6 +283,32 @@ export default class ScryptedApp extends Homey.App {
    * it was handed. Credentials in the URL are masked; the host, port and scheme are what
    * matter, since a rebroadcast URL bound to localhost is unusable from Homey.
    */
+  /**
+   * The last WebRTC negotiation each camera made, if it made one.
+   *
+   * The shapes are always reported; the descriptions themselves only when asked for, since
+   * they carry the session's ICE credentials and the host addresses of both ends. Reading
+   * them is how a refused answer — reported by Homey's player as one sentence with nothing
+   * in it — can be compared against the offer it was refusing to answer.
+   */
+  private describeNegotiations(includeSdp: boolean): unknown {
+    const rows: unknown[] = [];
+
+    for (const driver of Object.values(this.homey.drivers.getDrivers())) {
+      for (const device of driver.getDevices()) {
+        const negotiation = (device as { lastNegotiation?: Record<string, unknown> }).lastNegotiation;
+        if (!negotiation) continue;
+
+        const { sdp, ...shape } = negotiation;
+        rows.push({ name: device.getName(), ...shape, ...(includeSdp ? { sdp } : {}) });
+      }
+    }
+
+    return rows.length
+      ? rows
+      : 'no WebRTC negotiation yet — open a camera\'s live view, then read this again';
+  }
+
   /** The capabilities each paired Homey device currently carries. */
   private describePairedDevices(): unknown[] {
     const described: unknown[] = [];

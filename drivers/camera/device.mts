@@ -15,6 +15,7 @@ import { DetectionThrottle } from '../../lib/detectionThrottle.mjs';
 import { finiteInRangeOr, finiteOr } from '../../lib/settings.mjs';
 import { setCameraVideo, videosOf, type VideoBase } from '../../lib/homeyVideos.mjs';
 import { HomeyOfferSession } from '../../lib/webrtcBridge.mjs';
+import { alignAnswerToOffer, summariseSdp } from '../../lib/sdpAlign.mjs';
 import {
   clipQuery,
   hasRecentDetection,
@@ -386,6 +387,11 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
       this.video = video;
       video.registerVideoUrlListener(async () => ({ url: await this.resolveStreamUrl() }));
       await setCameraVideo(this, 'main', 'Live', video);
+      // Which transport a camera ended up on is decided by a setting, an interface the
+      // camera may not have, and a Homey that may not offer the API — three conditions the
+      // user cannot see the result of. A live view that fails is the first thing reported,
+      // and this is what says which path it failed on.
+      this.trace('video: registered over RTSP');
     } catch (err) {
       this.error('Could not register video stream:', (err as Error).message);
     }
@@ -402,6 +408,17 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
    * Nothing is cached across plays: a signalling session belongs to one viewer and one
    * connection, so each offer opens its own and its control handle dies with it.
    */
+  /**
+   * What the last WebRTC negotiation on this camera actually exchanged.
+   *
+   * A refused answer is reported by Homey's player as one sentence with no description in
+   * it, and neither side keeps what it sent. Without this the only way to find out what was
+   * offered and what came back is to guess, which is how the first attempt at the m-line
+   * fix came to fix the wrong half of the problem. The summaries carry no credentials; the
+   * descriptions do, and are returned only when `/diagnostics?webrtc=1` asks for them.
+   */
+  lastNegotiation: Record<string, unknown> | undefined;
+
   private async setupWebRTCVideo(videos: NonNullable<ReturnType<typeof videosOf>>): Promise<void> {
     const video = await videos.createVideoWebRTC({ acceptInvalidCertificates: true });
     if (!await this.resources.add('the WebRTC stream', async () => {
@@ -424,7 +441,38 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
         // Started before the wait, and the wait is what produces the answer: Scrypted calls
         // back into the session while this promise is still in flight.
         control = await device.startRTCSignalingSession(session) as RtcControl | undefined;
-        const answerSdp = await session.waitForAnswer();
+        const raw = await session.waitForAnswer();
+        const answer = alignAnswerToOffer(offerSdp, raw);
+
+        // Homey's player holds the answerer to the rule that an answer describes the offer's
+        // media in the offer's order, and refuses one that does not with "The order of
+        // m-lines in answer doesn't match order in offer" — which reaches the user as
+        // nothing but "something went wrong". Scrypted orders its answer by the transceivers
+        // its own pipeline created, so the two disagree whenever the camera's order is not
+        // the player's. What that costs is the whole live view, so it is traced either way.
+        const answerSdp = answer.sdp;
+        const offerShape = summariseSdp(offerSdp);
+        const answerShape = summariseSdp(raw);
+
+        this.lastNegotiation = {
+          at: new Date().toISOString(),
+          // Which side each call believed it was: an offer arriving where an answer was
+          // asked for is the difference between a description to repair and a handshake
+          // that never took place.
+          exchange: [...session.exchange],
+          changed: answer.changed,
+          note: answer.note,
+          offer: offerShape,
+          answerFromScrypted: answerShape,
+          answerToHomey: summariseSdp(answerSdp),
+          // Held so `?webrtc=1` can return them. Ephemeral ICE credentials and host
+          // addresses live in here, which is why they are not in the trace buffer that
+          // every diagnostics read returns.
+          sdp: { offer: offerSdp, answerFromScrypted: raw, answerToHomey: answerSdp },
+        };
+
+        this.trace(`webrtc: offer ${offerShape.join(' ')} | answer ${answerShape.join(' ')}`
+          + (answer.changed ? ' | re-ordered' : answer.note ? ` | passed through: ${answer.note}` : ''));
 
         if (session.ignoredCandidates) {
           // Not fatal — the answer already holds whatever was gathered in time — but it
@@ -466,6 +514,7 @@ export default class ScryptedCameraDevice extends BaseScryptedDevice {
     });
 
     await setCameraVideo(this, 'main', 'Live', video);
+    this.trace('video: registered over WebRTC');
   }
 
   /**
