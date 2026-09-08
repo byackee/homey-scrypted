@@ -182,3 +182,24 @@ export function alignAnswerToOffer(offerSdp: string, answerSdp: string): AnswerA
 
   return { sdp, changed: true, offerMids, answerMids };
 }
+
+/**
+ * The shape of a description, without anything secret in it.
+ *
+ * Each section as `<media>/<mid>/<port>/<direction>`. That is enough to see which side
+ * dropped what, which is the question a rejected answer raises, and it carries none of the
+ * ICE credentials or host addresses a full description does — so it can go in the trace
+ * buffer, which is read far more often than the opt-in dump.
+ */
+export function summariseSdp(sdp: string): string[] {
+  const { sections } = split(sdp ?? '');
+
+  return sections.map(section => {
+    const [, port = '?'] = section.lines[0]!.slice(2).split(/\s+/);
+    const direction = section.lines
+      .map(line => line.trim())
+      .find(line => ['a=sendrecv', 'a=recvonly', 'a=sendonly', 'a=inactive'].includes(line));
+
+    return `${section.media}/${section.mid ?? '-'}/${port}${direction ? `/${direction.slice(2)}` : ''}`;
+  });
+}

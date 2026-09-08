@@ -17,8 +17,12 @@ describe('HomeyOfferSession options', () => {
 
   it('asks for an answer and offers not to be asked for an offer', () => {
     const options = new HomeyOfferSession(OFFER).options;
-    assert.equal(options.requiresAnswer, true);
-    assert.equal(options.requiresOffer, false);
+    // Scrypted reads these as "which side answers", not "what I want back": it derives its
+    // `clientOffer` argument from `requiresAnswer === true ? false : true`. Declaring the
+    // pair the other way round makes Scrypted's camera the offerer, and Homey's player has
+    // no way to answer an offer.
+    assert.equal(options.requiresAnswer, false);
+    assert.equal(options.requiresOffer, true);
     assert.equal(options.offer?.sdp, OFFER);
   });
 
@@ -144,5 +148,40 @@ describe('HomeyOfferSession rejection safety', () => {
     session.reject(new Error('too late'));
 
     assert.equal(await session.waitForAnswer(1_000), ANSWER);
+  });
+});
+
+describe('HomeyOfferSession direction', () => {
+
+  it('refuses an offer arriving where an answer was due, rather than forwarding it', async () => {
+    // Handing this to Homey is what produced a black tile: the player refuses it and reports
+    // an m-line ordering fault, which is true of the description and is not the reason for it.
+    const session = new HomeyOfferSession(OFFER);
+
+    await session.setRemoteDescription(
+      { type: 'offer', sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 99\r\na=setup:actpass\r\n' },
+      SETUP,
+    );
+
+    await assert.rejects(session.waitForAnswer(100), /offered its own session/);
+  });
+
+  it('still takes an answer, since only an offer is the wrong direction', async () => {
+    const session = new HomeyOfferSession(OFFER);
+
+    await session.setRemoteDescription({ type: 'answer', sdp: ANSWER }, SETUP);
+
+    assert.match(await session.waitForAnswer(100), /m=video/);
+  });
+
+  it('records which side each call believed it was', async () => {
+    // The handshake happens inside an RPC proxy and neither end keeps what it exchanged.
+    // This record is what told an offer apart from a badly ordered answer.
+    const session = new HomeyOfferSession(OFFER);
+
+    await session.createLocalDescription('offer', SETUP, () => undefined);
+    await session.setRemoteDescription({ type: 'answer', sdp: ANSWER }, SETUP);
+
+    assert.deepEqual(session.exchange, ['createLocalDescription(offer)', 'setRemoteDescription(answer)']);
   });
 });

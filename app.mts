@@ -217,7 +217,7 @@ export default class ScryptedApp extends Homey.App {
    * Add ?video=1 to also resolve each camera's stream URL.
    */
   async getDiagnostics(
-    options: { video?: boolean; plugins?: boolean; clips?: boolean } = {},
+    options: { video?: boolean; plugins?: boolean; clips?: boolean; webrtc?: boolean } = {},
   ): Promise<unknown> {
     const runtime = await this.describeRuntime();
 
@@ -271,6 +271,7 @@ export default class ScryptedApp extends Homey.App {
       clipProbe: options.clips ? await this.probeClips() : 'pass ?clips=1 to probe recorded clips',
       pairedDevices: this.describePairedDevices(),
       plugins: options.plugins ? await this.probePlugins() : undefined,
+      webrtc: this.describeNegotiations(options.webrtc === true),
       traces: this.traces,
     };
   }
@@ -282,6 +283,32 @@ export default class ScryptedApp extends Homey.App {
    * it was handed. Credentials in the URL are masked; the host, port and scheme are what
    * matter, since a rebroadcast URL bound to localhost is unusable from Homey.
    */
+  /**
+   * The last WebRTC negotiation each camera made, if it made one.
+   *
+   * The shapes are always reported; the descriptions themselves only when asked for, since
+   * they carry the session's ICE credentials and the host addresses of both ends. Reading
+   * them is how a refused answer — reported by Homey's player as one sentence with nothing
+   * in it — can be compared against the offer it was refusing to answer.
+   */
+  private describeNegotiations(includeSdp: boolean): unknown {
+    const rows: unknown[] = [];
+
+    for (const driver of Object.values(this.homey.drivers.getDrivers())) {
+      for (const device of driver.getDevices()) {
+        const negotiation = (device as { lastNegotiation?: Record<string, unknown> }).lastNegotiation;
+        if (!negotiation) continue;
+
+        const { sdp, ...shape } = negotiation;
+        rows.push({ name: device.getName(), ...shape, ...(includeSdp ? { sdp } : {}) });
+      }
+    }
+
+    return rows.length
+      ? rows
+      : 'no WebRTC negotiation yet — open a camera\'s live view, then read this again';
+  }
+
   /** The capabilities each paired Homey device currently carries. */
   private describePairedDevices(): unknown[] {
     const described: unknown[] = [];

@@ -24,6 +24,9 @@ export default {
       video: query.video === '1',
       plugins: query.plugins === '1',
       clips: query.clips === '1',
+      // Returns the session descriptions themselves, which carry ICE credentials and the
+      // addresses of both ends. Opt-in for that reason.
+      webrtc: query.webrtc === '1',
     });
   },
 

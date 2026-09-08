@@ -71,6 +71,17 @@ export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocal
    */
   readonly __proxy_props: { options: RTCSignalingOptions };
 
+  /**
+   * Every call Scrypted made into this session, in order.
+   *
+   * The handshake happens inside an RPC proxy: what the far side asked for, and what it
+   * called what it sent back, are invisible from either end afterwards. When the player
+   * refuses the result — with one sentence and no description — this is the only record of
+   * which side believed it was offering. It holds no descriptions, only their types and the
+   * directions asked for.
+   */
+  readonly exchange: string[] = [];
+
   private settle: ((sdp: string) => void) | undefined;
   private fail: ((err: Error) => void) | undefined;
   private readonly answer: Promise<string>;
@@ -81,9 +92,24 @@ export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocal
   constructor(private readonly offerSdp: string) {
     this.options = {
       offer: { type: 'offer', sdp: offerSdp },
-      // Homey has already made the offer, so the only thing wanted back is an answer.
-      requiresOffer: false,
-      requiresAnswer: true,
+      // These two decide which side offers, and they do not mean what they appear to.
+      // Scrypted picks the role in `startRTCSignalingSession` with
+      //
+      //     options?.requiresAnswer === true ? false : true
+      //
+      // as the `clientOffer` argument. `requiresAnswer: true` therefore does not say "send
+      // me an answer" — it says *this* session is the one that will answer. Declared that
+      // way, Scrypted made its own camera the offerer: what came back carried `setup:actpass`,
+      // payload types the offer never mentioned, an H265 codec nobody asked for and the
+      // camera's own media order. That is an offer, and this bridge handed it to Homey as an
+      // answer, where the player refused it — with a message about m-line order, which is
+      // true and is not the reason.
+      //
+      // Homey's player is always the offerer; the API gives an offer and takes an answer,
+      // with no other shape available. So this session must be the offerer, and both flags
+      // say so.
+      requiresOffer: true,
+      requiresAnswer: false,
       // See the class comment: the single point on which this bridge depends.
       disableTrickle: true,
       // Homey's player is not a browser and cannot renegotiate, which is exactly what this
@@ -119,9 +145,11 @@ export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocal
    */
   async createLocalDescription(
     type: 'offer' | 'answer',
-    _setup: RTCAVSignalingSetup,
+    setup: RTCAVSignalingSetup,
     _sendIceCandidate: unknown,
   ): Promise<SessionDescription> {
+    this.record(`createLocalDescription(${type})`, setup);
+
     if (type !== 'offer') {
       const err = new Error(
         'Scrypted asked this camera to answer an offer it would make itself, which Homey cannot do.');
@@ -135,11 +163,29 @@ export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocal
   /** Scrypted delivering its answer. This is what Homey has been waiting on. */
   async setRemoteDescription(
     description: SessionDescription,
-    _setup: RTCAVSignalingSetup,
+    setup: RTCAVSignalingSetup,
   ): Promise<void> {
+    // The type is recorded rather than enforced. A far side that sends an offer here has
+    // not answered anything, and no amount of repair to the description will make it an
+    // answer — but refusing it outright would replace a picture that sometimes works with
+    // one that never does, so this reports and carries on.
+    this.record(`setRemoteDescription(${String(description?.type ?? 'no type')})`, setup);
+
     const sdp = description?.sdp;
     if (typeof sdp !== 'string' || !sdp.length) {
       this.reject(new Error('Scrypted returned an empty session description.'));
+      return;
+    }
+
+    // An offer arriving here is not an answer with a fault in it — it is the far side
+    // negotiating in the opposite direction, and nothing that can be done to the text will
+    // make it answer the question Homey asked. Forwarding it anyway is what produced a black
+    // tile and a message about m-line ordering that sent the search in the wrong direction
+    // for an afternoon. Refused by name instead.
+    if (description.type === 'offer') {
+      this.reject(new Error(
+        'Scrypted offered its own session instead of answering Homey\'s. '
+        + 'The camera cannot be viewed over WebRTC; switch its Live stream transport to RTSP.'));
       return;
     }
     if (this.settled) return;
@@ -158,6 +204,18 @@ export class HomeyOfferSession implements Omit<RTCSignalingSession, 'createLocal
    */
   async addIceCandidate(_candidate: IceCandidate): Promise<void> {
     this.strayCandidates += 1;
+  }
+
+  /** One line of the exchange: what was called, and the setup it was called with. */
+  private record(call: string, setup: RTCAVSignalingSetup | undefined): void {
+    const shape = setup as { type?: string; audio?: { direction?: string }; video?: { direction?: string } };
+    const details = [
+      shape?.type ? `setup.type=${shape.type}` : undefined,
+      shape?.audio?.direction ? `audio=${shape.audio.direction}` : undefined,
+      shape?.video?.direction ? `video=${shape.video.direction}` : undefined,
+    ].filter(Boolean);
+
+    this.exchange.push(details.length ? `${call} ${details.join(' ')}` : call);
   }
 
   async getOptions(): Promise<RTCSignalingOptions> {

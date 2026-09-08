@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { alignAnswerToOffer } from '../lib/sdpAlign.mjs';
+import { alignAnswerToOffer, summariseSdp } from '../lib/sdpAlign.mjs';
 
 /** Joins with CRLF and terminates the last line, which is how an SDP is written. */
 function sdp(...lines: string[]): string {
@@ -137,4 +137,23 @@ test('re-ordering does not leave a blank line where the answer used to end', () 
   assert.equal(aligned.sdp.split('\r\n').filter((line, index, all) => !line && index < all.length - 1).length, 0);
   assert.ok(aligned.sdp.endsWith('\r\n'));
   assert.equal(aligned.sdp.split('\r\n').length, answer.split('\r\n').length);
+});
+
+test('a summary names each section without carrying anything secret', () => {
+  const answer = sdp(
+    ...SESSION,
+    'a=group:BUNDLE 0 1',
+    'm=audio 9 UDP/TLS/RTP/SAVPF 111',
+    'a=mid:0',
+    'a=ice-ufrag:9Xz1',
+    'a=ice-pwd:a-secret-nobody-needs-in-a-log',
+    'a=sendonly',
+    'm=application 0 UDP/DTLS/SCTP webrtc-datachannel',
+    'a=mid:2',
+  );
+
+  const summary = summariseSdp(answer);
+
+  assert.deepEqual(summary, ['audio/0/9/sendonly', 'application/2/0']);
+  assert.doesNotMatch(summary.join(' '), /secret|ufrag/);
 });
