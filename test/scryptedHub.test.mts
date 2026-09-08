@@ -584,3 +584,60 @@ test('repairing onto another server tells the devices the old one is gone', asyn
     mock.timers.reset();
   }
 });
+
+test('a failure against the server just left is not reported against the one just chosen', async () => {
+  // Reproduces what a user does when they mistype a host: save, wait, correct it, save
+  // again. The first attempt is still in flight against the wrong host when the second
+  // starts, and it fails afterwards. Its refusal must not be recorded, or the settings page
+  // shows the old host's error as the verdict on details that are in fact fine.
+  const held = deferred();
+  let attempt = 0;
+  const client = fakeClient();
+
+  const hub = new ScryptedHub({
+    connect: async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        await held.promise;
+        throw new Error('connect EHOSTUNREACH old.host:10443');
+      }
+      return client as never;
+    },
+  });
+
+  const first = hub.setConfig({ ...CONFIG, host: 'old.host' }).catch(() => undefined);
+  await flush();
+
+  await hub.setConfig({ ...CONFIG, host: 'new.host' });
+  assert.equal(hub.isConnected, true, 'the second attempt should have connected');
+
+  held.release();
+  await first;
+  await flush();
+
+  assert.equal(hub.lastError, null, 'the abandoned attempt recorded its failure anyway');
+  assert.equal(hub.getConfig()?.host, 'new.host');
+  hub.destroy();
+});
+
+test('a reason that cannot be described still leaves a retry armed', async () => {
+  // The formatter runs on the failure path, so anything it throws would otherwise be thrown
+  // in place of arming the reconnect — leaving every device unavailable until the app is
+  // restarted, which is the outcome that path exists to prevent.
+  const hostile = { get message(): string { throw new Error('boom'); } };
+  let attempts = 0;
+
+  const hub = new ScryptedHub({
+    connect: async () => {
+      attempts += 1;
+      throw hostile;
+    },
+  });
+
+  await assert.rejects(hub.setConfig(CONFIG));
+  await flush();
+
+  assert.equal(attempts, 1);
+  assert.notEqual(hub.lastError, null, 'the failure should still have been recorded');
+  hub.destroy();
+});

@@ -69,3 +69,39 @@ test('a long list is cut rather than allowed to fill the page', () => {
 
   assert.match(described, /and 3 more$/);
 });
+
+test('a description that points back at its own error does not exhaust the stack', () => {
+  // `description` is arbitrary transport context from engine.io. Described without a bound,
+  // a self-referential one throws a RangeError — and this function is called on the path
+  // that arms the reconnect, so throwing there costs the recovery, not just the sentence.
+  const looping: Record<string, unknown> = { message: 'websocket error' };
+  looping.description = looping;
+
+  assert.equal(describeConnectFailure(looping), 'websocket error');
+});
+
+test('an error with no prototype is described rather than thrown on', () => {
+  // Anything crossing Scrypted's RPC boundary can arrive like this, and `String()` on it
+  // throws instead of producing a string.
+  const bare = Object.create(null) as { message?: string };
+
+  assert.doesNotThrow(() => describeConnectFailure(bare));
+  assert.equal(describeConnectFailure(bare), 'The connection failed without reporting a reason.');
+});
+
+test('a property that throws when read does not take the description with it', () => {
+  const hostile = {
+    get message(): string { throw new Error('boom'); },
+    get code(): string { throw new Error('boom'); },
+    get description(): unknown { throw new Error('boom'); },
+  };
+
+  assert.doesNotThrow(() => describeConnectFailure(hostile));
+});
+
+test('a cycle through `errors` is walked once, not forever', () => {
+  const loop: { errors?: unknown[] } = {};
+  loop.errors = [{ message: 'refused' }, loop];
+
+  assert.match(describeConnectFailure(loop), /refused/);
+});

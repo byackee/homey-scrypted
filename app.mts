@@ -4,6 +4,7 @@ import { ScryptedMimeTypes } from '@scrypted/types';
 import type { MediaStreamUrl, VideoClip } from '@scrypted/types';
 import { ScryptedHub } from './lib/ScryptedHub.mjs';
 import { describeConnectFailure } from './lib/connectErrors.mjs';
+import { normaliseServerConfig } from './lib/serverConfig.mjs';
 import { typesForDriver, type DriverId } from './lib/deviceTypeMap.mjs';
 import { clipQuery, isObjectClip, selectLatestObjectClip, thumbnailIdOf } from './lib/videoClips.mjs';
 import type { ScryptedConfig } from './lib/types.mjs';
@@ -93,15 +94,15 @@ export default class ScryptedApp extends Homey.App {
    */
   async updateConfig(update: Omit<ScryptedConfig, 'password'> & { password?: string }): Promise<void> {
     const stored = this.homey.settings.get(SETTINGS_KEY) as ScryptedConfig | null;
-    const password = update.password || stored?.password;
-    if (!password) throw new Error(this.homey.__('errors.password_required'));
 
-    const config: ScryptedConfig = {
-      host: update.host,
-      port: update.port,
-      username: update.username,
-      password,
-    };
+    // The stored password stands in for the empty field before the details are checked, so
+    // that leaving it blank reads as "unchanged" rather than as "no password". Everything
+    // else is checked exactly as the repair dialog checks it: this page could store an empty
+    // host, and did so without saying anything.
+    const config = normaliseServerConfig(
+      { ...update, password: update.password || stored?.password },
+      key => this.homey.__(key),
+    );
 
     this.homey.settings.set(SETTINGS_KEY, config);
 

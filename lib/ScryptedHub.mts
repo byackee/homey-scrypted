@@ -35,7 +35,17 @@ type Logger = (...args: unknown[]) => void;
 let clientModule: Promise<typeof connectScryptedClient> | undefined;
 
 const lazyConnect: typeof connectScryptedClient = async options => {
-  clientModule ??= import('@scrypted/client').then(module => module.connectScryptedClient);
+  // A *rejected* load must not be kept: retaining it answers every later attempt and every
+  // backoff retry with the same stale failure, and nothing short of restarting the app can
+  // clear it. The environment this deferral was written for — a Homey with barely enough
+  // memory to evaluate the module — is exactly the one where the load can fail once and
+  // succeed later.
+  clientModule ??= import('@scrypted/client')
+    .then(module => module.connectScryptedClient)
+    .catch(err => {
+      clientModule = undefined;
+      throw err;
+    });
   return (await clientModule)(options);
 };
 
@@ -145,14 +155,23 @@ export class ScryptedHub extends EventEmitter {
         // server still starting, the Mac asleep, the host briefly unreachable — leaves no
         // path back, and every device stays unavailable until the app is restarted.
         // An attempt the hub abandoned is exempt: its replacement is already under way.
-        if (err instanceof SupersededError) throw err;
+        // Superseded by name, or superseded in fact: a `SupersededError` is only raised
+        // after the handshake completes, so an attempt that *fails* against the server the
+        // hub has already left reaches here unmarked. Recording its reason would show the
+        // old server's refusal against details just saved for a new one, and arming its
+        // retry would undo the backoff its replacement just reset.
+        if (err instanceof SupersededError || this.epoch !== epoch) throw err;
+
+        // Armed first. Everything below it describes the failure, and describing a failure
+        // must never be able to cost the recovery from it — that is the whole purpose of
+        // this catch, and an exception raised above this line would skip it.
+        this.scheduleReconnect();
 
         // Flattened here rather than at the point it is displayed: this is the only place
         // that still holds the aggregate the client throws, and every consumer downstream —
         // the settings page, the repair view, diagnostics, the log — needs the same answer.
         const reason = describeConnectFailure(err);
         this.lastFailure = { at: new Date().toISOString(), reason };
-        this.scheduleReconnect();
         throw new Error(reason, { cause: err });
       })
       .finally(() => {
